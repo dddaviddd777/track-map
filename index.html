@@ -46,8 +46,9 @@
   <!-- Barra inferior del track actiu -->
   <section id="trackbar" hidden>
     <div class="tb-head">
-      <button class="tb-toggle" id="tb-toggle" aria-label="Mostrar o amagar el perfil" aria-expanded="true">
+      <button class="tb-toggle" id="tb-toggle" aria-label="Plegar la barra del track" aria-expanded="true">
         <span class="tb-name" id="tb-name"></span>
+        <span class="tb-mini" id="tb-mini"></span>
         <svg class="chev" viewBox="0 0 24 24"><path d="m6 15 6-6 6 6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
       <button class="icon-btn" id="tb-close" aria-label="Treure el track del mapa">
@@ -87,6 +88,10 @@
     </label>
     <ul id="track-list" class="track-list"></ul>
     <p class="fine" id="track-empty">Encara no tens cap track. Descarrega'l de Wikiloc en format GPX i afegeix-lo aquí.</p>
+    <button class="btn btn-storage" id="btn-storage">
+      <svg viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7.5" ry="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M4.5 6v12c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3V6M4.5 12c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+      Espai ocupat i mapes guardats
+    </button>
   </section>
 
   <!-- Panell: track acabat d'afegir -->
@@ -139,7 +144,32 @@
     </div>
     <hr>
     <p class="fine" id="storage-info"></p>
-    <button class="btn btn-danger-text" id="dl-clear">Esborrar tots els mapes descarregats</button>
+    <button class="btn btn-danger-text btn-link" id="dl-clear">Gestionar l'espai i els mapes guardats</button>
+  </section>
+
+  <!-- Panell: espai ocupat -->
+  <section class="sheet" id="sheet-storage" hidden aria-label="Espai ocupat">
+    <header><h2>Espai ocupat</h2><button class="icon-btn close-sheet" aria-label="Tancar"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></button></header>
+    <p class="st-total" id="st-total"></p>
+    <div class="st-bar" id="st-bar"></div>
+    <ul class="st-legend" id="st-legend"></ul>
+
+    <h3>Tracks</h3>
+    <ul class="st-list" id="st-tracks"></ul>
+    <p class="fine" id="st-tracks-empty" hidden>No tens cap track guardat.</p>
+
+    <h3>Zones descarregades</h3>
+    <ul class="st-list" id="st-areas"></ul>
+    <p class="fine" id="st-areas-empty" hidden>Cap. Les zones es descarreguen des de la fletxa avall ➜ «Zona visible».</p>
+
+    <h3>Mapes vistos navegant</h3>
+    <div class="st-item">
+      <div class="st-info"><b id="st-loose"></b><small>Trossos de mapa que l'app guarda sola mentre mires el mapa amb cobertura. Es poden esborrar sense problema.</small></div>
+      <div class="st-actions"><button class="btn btn-sm btn-danger" id="st-loose-clear">Esborrar</button></div>
+    </div>
+
+    <hr>
+    <button class="btn btn-danger-text" id="st-clear-all">Esborrar tots els mapes guardats</button>
   </section>
 
   <!-- Proposta d'instal·lar l'app (només si el navegador ho permet i encara no està instal·lada) -->

@@ -11,11 +11,13 @@ App per seguir tracks de Wikiloc (GPX/KML) sobre mapes de l'ICGC, al mòbil Andr
 - **La teva posició**: botó gran de baix. Un toc et centra i et segueix; si mous el mapa, deixa de seguir-te.
 - **Orientació del mapa**: el botó de la brúixola (a sobre del de posició) fa girar el mapa segons cap on apunta el mòbil. Torna-hi a tocar per posar el nord a dalt.
 - **Seguiment**: a la barra de baix veus els km fets i els que falten, la pujada i la baixada que queden, i un avís si t'allunyes més de 40 m del track.
-- **Perfil d'altitud**: toca'l o arrossega-hi el dit per veure aquell punt al mapa. Toca el nom del track per amagar-lo.
+- **Perfil d'altitud**: toca'l o arrossega-hi el dit per veure aquell punt al mapa.
+- **Plegar la barra del track**: toca el nom del track (o la fletxa) per deixar només una línia amb el que falta i veure més mapa.
 - **Google Maps**: mantén el dit premut sobre un punt del mapa per obrir-lo a Google Maps o demanar com arribar-hi (et porta a la carretera o pista més propera).
 - **Compartir la meva ubicació**: toca el punt blau per enviar on ets per WhatsApp, SMS, etc.
 - **Pantalla encesa**: botó del sol. Evita que la pantalla s'apagui mentre camines.
 - **Sense cobertura**: en afegir un track, l'app pregunta si vols guardar *només el track* o *el track amb mapes*. També pots descarregar els mapes després amb la fletxa avall. A la llista, cada track indica *Offline* (amb el que ocupa) o *Sense mapes*. Descarrega-ho **a casa, amb wifi**; el GPS funciona sense dades mòbils.
+- **Espai ocupat**: a *Els meus tracks* ➜ *Espai ocupat i mapes guardats* veus quant ocupa cada track, cada zona i els mapes vistos navegant, i pots esborrar-ne els mapes o el track.
 
 ## Consells
 

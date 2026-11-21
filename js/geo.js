@@ -145,6 +145,7 @@ export function fmtDist(m) {
 export const fmtEle = m => (m == null || !isFinite(m) ? '–' : `${nf0.format(Math.round(m))} m`);
 export const fmtInt = n => nf0.format(n);
 export function fmtBytes(b) {
+  if (!b) return '0 MB';
   if (b < 1024 * 1024) return `${nf0.format(Math.max(1, Math.round(b / 1024)))} kB`;
   if (b < 1024 ** 3) return `${nf0.format(Math.round(b / 1024 ** 2))} MB`;
   return `${nf1.format(b / 1024 ** 3)} GB`;

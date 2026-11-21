@@ -2,7 +2,8 @@ import { getAllTracks, getTrack, saveTrack, deleteTrack } from './db.js';
 import { parseTrackFile } from './gpx.js';
 import { analyse, locateOnTrack, bearing, haversine, fmtDist, fmtEle, fmtInt, fmtBytes } from './geo.js';
 import { LAYERS, DEFAULT_LAYER, COVERAGE, layerById, makeTileLayer } from './layers.js';
-import { planForTrack, planForBounds, estimate, download, storageInfo, requestPersistence, clearTiles } from './offline.js';
+import { planForTrack, planForBounds, estimate, download, storageInfo, requestPersistence, clearTiles,
+  urlsForTrack, urlsForArea, cachedTileSizes, deleteTiles } from './offline.js';
 
 const $ = s => document.querySelector(s);
 const store = {
@@ -236,7 +237,8 @@ async function renderTrackList() {
     li.querySelector('.track-main').onclick = async () => { closeSheets(); await activateTrack(t.id); };
     li.querySelector('.dl').onclick = async () => { await activateTrack(t.id, false); openDownload('track'); };
     li.querySelector('.del').onclick = async () => {
-      if (!confirm(`Vols esborrar «${t.name}»?`)) return;
+      if (!confirm(t.offline ? `Vols esborrar «${t.name}» i els seus mapes?` : `Vols esborrar «${t.name}»?`)) return;
+      if (t.offline) await deleteTrackMaps(t, await getAllTracks(), store.get('areas', []));
       await deleteTrack(t.id);
       if (state.track?.rec.id === t.id) deactivateTrack();
       renderTrackList();
@@ -344,6 +346,10 @@ function updateTrackbar() {
     if (p) alert.textContent = `Ets a ${fmtDist(p.d)} del track`;
   }
   $('#tb-stats').innerHTML = html;
+  // Resum curt que es veu quan la barra està plegada
+  $('#tb-mini').textContent = p && p.d <= FAR_M
+    ? `Falta ${fmtDist(info.distance - p.along)}`
+    : fmtDist(info.distance);
   drawProfile();
   syncTrackbarHeight();
 }
@@ -357,12 +363,15 @@ $('#tb-toggle').onclick = () => {
   const btn = $('#tb-toggle');
   const open = btn.getAttribute('aria-expanded') !== 'true';
   btn.setAttribute('aria-expanded', String(open));
-  store.set('profileOpen', open);
+  store.set('trackbarOpen', open);
   applyProfileVisibility();
 };
 
+// Barra desplegada: xifres i perfil. Plegada: només el nom i un resum (més mapa a la vista).
 function applyProfileVisibility() {
   const open = $('#tb-toggle').getAttribute('aria-expanded') === 'true';
+  $('#tb-toggle').setAttribute('aria-label', open ? 'Plegar la barra del track' : 'Desplegar la barra del track');
+  $('#tb-stats').hidden = !open;
   $('#tb-profile').hidden = !open || !state.track?.info.hasEle;
   drawProfile();
   syncTrackbarHeight();
@@ -833,6 +842,21 @@ $('#dl-start').onclick = async () => {
   bar.style.width = '0%';
   txt.textContent = 'Començant…';
   const wasTrack = state.dlMode === 'track' && state.track;
+  const maxZoom = Number($('#dl-maxzoom').value);
+  const layers = plan.map(p => p.def.id);
+  let area = null;
+  if (!wasTrack) {
+    const b = map.getBounds();
+    area = {
+      id: String(Date.now()),
+      at: Date.now(),
+      name: `Zona descarregada el ${new Date().toLocaleDateString('ca')}`,
+      bounds: [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()].map(v => +v.toFixed(5)),
+      layers,
+      minZoom: Math.max(10, Math.min(map.getZoom(), maxZoom)),
+      maxZoom,
+    };
+  }
   const res = await download(plan, {
     signal: ctrl.signal,
     onProgress: ({ done, total, bytes, failed }) => {
@@ -850,8 +874,12 @@ $('#dl-start').onclick = async () => {
       : 'Fet! Ja pots fer servir aquests mapes sense cobertura.';
     if (wasTrack && !res.failed) {
       const rec = state.track.rec;
-      rec.offline = { at: Date.now(), layers: plan.map(p => p.def.id), maxZoom: Number($('#dl-maxzoom').value), bytes: res.totalBytes };
+      rec.offline = { at: Date.now(), layers, maxZoom, buffer: Number($('#dl-buffer').value), bytes: res.totalBytes };
       await saveTrack(rec);
+    }
+    if (area) {
+      area.bytes = res.totalBytes;
+      store.set('areas', [...store.get('areas', []), area]);
     }
   }
   refreshDownload();
@@ -859,13 +887,160 @@ $('#dl-start').onclick = async () => {
 };
 $('#dl-cancel').onclick = () => state.dlAbort?.abort();
 
-$('#dl-clear').onclick = async () => {
-  if (!confirm('Vols esborrar tots els mapes guardats? Els tracks no s\'esborren.')) return;
+$('#dl-clear').onclick = () => openStorage();
+$('#btn-storage').onclick = () => openStorage();
+
+// ---------------------------------------------------------------- Espai ocupat i gestió de dades
+
+const trackBytes = t => new Blob([JSON.stringify(t)]).size;
+
+async function openStorage() {
+  openSheet('#sheet-storage');
+  $('#st-total').textContent = 'Calculant…';
+  $('#st-bar').innerHTML = '';
+  $('#st-legend').innerHTML = '';
+  $('#st-tracks').innerHTML = '';
+  $('#st-areas').innerHTML = '';
+  const [tracks, sizes, info] = await Promise.all([getAllTracks(), cachedTileSizes(), storageInfo()]);
+  const areas = store.get('areas', []);
+
+  // Quines tessel·les són de cada element (un mateix tros de mapa pot ser de més d'un)
+  const owned = new Set();
+  const sumOf = urls => { let b = 0, n = 0; for (const u of urls) if (sizes.has(u)) { b += sizes.get(u); n++; owned.add(u); } return { b, n }; };
+  const trackRows = tracks.sort((a, b) => b.added - a.added).map(t => ({ t, maps: t.offline ? sumOf(urlsForTrack(t, layerById)) : null, own: trackBytes(t) }));
+  const areaRows = areas.map(a => ({ a, maps: sumOf(urlsForArea(a, layerById)) }));
+  let totalTiles = 0;
+  for (const b of sizes.values()) totalTiles += b;
+  let ownedBytes = 0;
+  for (const u of owned) ownedBytes += sizes.get(u);
+  const looseBytes = totalTiles - ownedBytes;
+  const tracksBytes = trackRows.reduce((s, r) => s + r.own, 0);
+  const trackMaps = (() => { const set = new Set(); trackRows.forEach(r => r.t.offline && urlsForTrack(r.t, layerById).forEach(u => sizes.has(u) && set.add(u))); let b = 0; set.forEach(u => (b += sizes.get(u))); return b; })();
+  const areaMaps = Math.max(0, ownedBytes - trackMaps);
+
+  // Resum i barra
+  const total = totalTiles + tracksBytes;
+  $('#st-total').innerHTML = `<b>${fmtBytes(total)}</b> ocupats per Track Map`
+    + (info.quota ? `<small>Espai disponible per a l'app: ${fmtBytes(info.quota)}${info.persisted ? ' · protegit contra esborrats automàtics' : ''}</small>` : '');
+  const parts = [
+    ['Mapes dels tracks', trackMaps, 'var(--green)'],
+    ['Zones descarregades', areaMaps, '#1a73e8'],
+    ['Mapes vistos navegant', looseBytes, '#f9ab00'],
+    ['Tracks', tracksBytes, 'var(--track)'],
+  ];
+  for (const [label, b, color] of parts) {
+    if (total > 0 && b > 0) {
+      const seg = document.createElement('span');
+      seg.style.cssText = `width:${Math.max(1.5, (b / total) * 100)}%;background:${color}`;
+      $('#st-bar').append(seg);
+    }
+    const li = document.createElement('li');
+    li.innerHTML = `<i style="background:${color}"></i><span></span><b></b>`;
+    li.querySelector('span').textContent = label;
+    li.querySelector('b').textContent = fmtBytes(b);
+    $('#st-legend').append(li);
+  }
+
+  // Tracks
+  $('#st-tracks-empty').hidden = trackRows.length > 0;
+  for (const { t, maps, own } of trackRows) {
+    const li = document.createElement('li');
+    li.className = 'st-item';
+    li.innerHTML = `<div class="st-info"><b></b><small></small></div><div class="st-actions"></div>`;
+    li.querySelector('b').textContent = t.name;
+    li.querySelector('small').textContent = `Track ${fmtBytes(own)} · ` + (maps ? `mapes ${fmtBytes(maps.b)}` : 'sense mapes');
+    const acts = li.querySelector('.st-actions');
+    if (maps) acts.append(smallBtn('Esborrar mapes', () => removeTrackMaps(t, tracks, areas)));
+    else acts.append(smallBtn('Descarregar mapes', async () => { await activateTrack(t.id, false); openDownload('track'); }));
+    acts.append(smallBtn('Esborrar track', () => removeTrack(t, tracks, areas), true));
+    $('#st-tracks').append(li);
+  }
+
+  // Zones
+  $('#st-areas-empty').hidden = areaRows.length > 0;
+  for (const { a, maps } of areaRows) {
+    const li = document.createElement('li');
+    li.className = 'st-item';
+    li.innerHTML = `<div class="st-info"><b></b><small></small></div><div class="st-actions"></div>`;
+    li.querySelector('b').textContent = a.name;
+    li.querySelector('small').textContent = `${a.layers.map(id => layerById(id).name.replace(/ \(.*\)/, '')).join(' + ')} · ${fmtBytes(maps.b)}`;
+    const acts = li.querySelector('.st-actions');
+    acts.append(smallBtn('Veure al mapa', () => { closeSheets(); setFollow(false); map.fitBounds([[a.bounds[0], a.bounds[1]], [a.bounds[2], a.bounds[3]]]); }));
+    acts.append(smallBtn('Esborrar', () => removeArea(a, tracks, areas), true));
+    $('#st-areas').append(li);
+  }
+
+  $('#st-loose').textContent = fmtBytes(looseBytes);
+  $('#st-loose-clear').disabled = looseBytes === 0;
+  $('#st-loose-clear').onclick = async () => {
+    if (!confirm('S\'esborraran els trossos de mapa guardats mentre navegaves. Els mapes dels tracks i les zones es mantenen.')) return;
+    const keep = keepSet(tracks, areas);
+    await deleteTiles([...sizes.keys()].filter(u => !keep.has(u)));
+    toast('Mapes vistos navegant esborrats');
+    openStorage();
+  };
+}
+
+function smallBtn(label, onClick, danger = false) {
+  const b = document.createElement('button');
+  b.className = 'btn btn-sm' + (danger ? ' btn-danger' : '');
+  b.textContent = label;
+  b.onclick = onClick;
+  return b;
+}
+
+// Tessel·les que cal conservar perquè són d'algun track o zona (excepte els indicats)
+function keepSet(tracks, areas, skipTrack = null, skipArea = null) {
+  const keep = new Set();
+  for (const t of tracks) if (t.offline && t.id !== skipTrack) urlsForTrack(t, layerById).forEach(u => keep.add(u));
+  for (const a of areas) if (a.id !== skipArea) urlsForArea(a, layerById).forEach(u => keep.add(u));
+  return keep;
+}
+
+async function deleteTrackMaps(t, tracks, areas) {
+  const keep = keepSet(tracks, areas, t.id);
+  await deleteTiles([...urlsForTrack(t, layerById)].filter(u => !keep.has(u)));
+  t.offline = null;
+  await saveTrack(t);
+  if (state.track?.rec.id === t.id) state.track.rec.offline = null;
+}
+
+async function removeTrackMaps(t, tracks, areas) {
+  if (!confirm(`S'esborraran els mapes de «${t.name}». El track es manté i el podràs seguir amb cobertura.`)) return;
+  await deleteTrackMaps(t, tracks, areas);
+  toast('Mapes esborrats');
+  openStorage();
+}
+
+async function removeTrack(t, tracks, areas) {
+  const msg = t.offline
+    ? `S'esborrarà «${t.name}» i els seus mapes. No es pot desfer.`
+    : `S'esborrarà «${t.name}». No es pot desfer.`;
+  if (!confirm(msg)) return;
+  if (t.offline) await deleteTrackMaps(t, tracks, areas);
+  await deleteTrack(t.id);
+  if (state.track?.rec.id === t.id) deactivateTrack();
+  toast('Track esborrat');
+  openStorage();
+}
+
+async function removeArea(a, tracks, areas) {
+  if (!confirm(`S'esborrarà «${a.name}». No es pot desfer.`)) return;
+  const keep = keepSet(tracks, areas, null, a.id);
+  await deleteTiles([...urlsForArea(a, layerById)].filter(u => !keep.has(u)));
+  store.set('areas', areas.filter(x => x.id !== a.id));
+  toast('Zona esborrada');
+  openStorage();
+}
+
+$('#st-clear-all').onclick = async () => {
+  if (!confirm('S\'esborraran TOTS els mapes guardats (tracks, zones i navegació). Els tracks es mantenen.')) return;
   await clearTiles();
   for (const t of await getAllTracks()) if (t.offline) { t.offline = null; await saveTrack(t); }
   if (state.track) state.track.rec.offline = null;
-  toast('Mapes esborrats');
-  refreshStorage();
+  store.set('areas', []);
+  toast('Tots els mapes esborrats');
+  openStorage();
 };
 
 // ---------------------------------------------------------------- Instal·lar l'app
@@ -900,7 +1075,7 @@ window.addEventListener('appinstalled', () => {
 
 async function init() {
   setBaseLayer(state.layerId);
-  $('#tb-toggle').setAttribute('aria-expanded', String(store.get('profileOpen', true)));
+  $('#tb-toggle').setAttribute('aria-expanded', String(store.get('trackbarOpen', true)));
 
   const active = store.get('activeTrack', null);
   if (active) {

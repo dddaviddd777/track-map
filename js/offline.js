@@ -111,3 +111,43 @@ export async function requestPersistence() {
 }
 
 export const clearTiles = () => caches.delete(TILE_CACHE);
+
+// --- Gestió de l'espai ---------------------------------------------------------
+
+/** URL de les tessel·les que pertanyen a un track amb mapes guardats. */
+export function urlsForTrack(rec, layerById) {
+  const o = rec.offline;
+  if (!o) return new Set();
+  const defs = (o.layers || []).map(layerById);
+  const plan = planForTrack(defs, rec.points, o.buffer || 500, o.maxZoom || 17);
+  return new Set(plan.flatMap(p => p.urls));
+}
+
+/** URL de les tessel·les d'una zona descarregada. */
+export function urlsForArea(area, layerById) {
+  const [s, w, n, e] = area.bounds;
+  const bounds = L.latLngBounds([s, w], [n, e]);
+  const plan = planForBounds(area.layers.map(layerById), bounds, area.minZoom, area.maxZoom);
+  return new Set(plan.flatMap(p => p.urls));
+}
+
+/** Mida de cada tessel·la guardada: Map(url → bytes). */
+export async function cachedTileSizes() {
+  const sizes = new Map();
+  const cache = await caches.open(TILE_CACHE);
+  for (const req of await cache.keys()) {
+    const res = await cache.match(req);
+    let b = Number(res?.headers.get('content-length')) || 0;
+    if (!b && res) b = (await res.blob()).size;
+    sizes.set(req.url, b);
+  }
+  return sizes;
+}
+
+/** Esborra unes tessel·les concretes. Torna quantes n'ha esborrat. */
+export async function deleteTiles(urls) {
+  const cache = await caches.open(TILE_CACHE);
+  let n = 0;
+  for (const u of urls) if (await cache.delete(u)) n++;
+  return n;
+}

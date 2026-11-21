@@ -137,8 +137,14 @@ svg { display: block; }
   background: none; border: 0; padding: 8px 2px; text-align: left;
 }
 .tb-name { font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.chev { width: 18px; height: 18px; flex: none; color: var(--ink-2); transition: transform .2s; }
-.tb-toggle[aria-expanded="false"] .chev { transform: rotate(180deg); }
+.tb-mini { flex: none; margin-left: auto; font-weight: 650; color: var(--track); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tb-toggle[aria-expanded="true"] .tb-mini { display: none; }
+.chev {
+  width: 30px; height: 30px; padding: 5px; flex: none; color: var(--ink-2);
+  background: var(--bg-2); border-radius: 50%; transition: transform .2s;
+}
+.tb-toggle[aria-expanded="true"] .chev { transform: rotate(180deg); }
+.tb-toggle[aria-expanded="false"] + .icon-btn { margin-left: 0; }
 .tb-alert {
   margin: 0 0 6px; padding: 6px 10px; border-radius: 8px; font-weight: 600; font-size: 14px;
   background: #fde8d7; color: #8a3b00;
@@ -221,6 +227,28 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 16px 0 4px; }
 .progress p { font-size: 13px; color: var(--ink-2); margin: 6px 0 10px; }
 .actions { display: flex; gap: 10px; }
 .actions .btn { flex: 1; }
+
+/* Espai ocupat */
+.btn-storage { width: 100%; margin-top: 14px; }
+.btn-link { text-decoration: underline; color: var(--green-dark); }
+.st-total { margin: 6px 0 10px; }
+.st-total b { font-size: 22px; }
+.st-total small { display: block; font-size: 12.5px; color: var(--ink-2); margin-top: 2px; }
+.st-bar { display: flex; height: 12px; border-radius: 6px; overflow: hidden; background: var(--bg-2); gap: 2px; }
+.st-bar span { display: block; height: 100%; }
+.st-legend { list-style: none; padding: 0; margin: 10px 0 4px; display: grid; gap: 5px; font-size: 14px; }
+.st-legend li { display: flex; align-items: center; gap: 8px; }
+.st-legend i { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+.st-legend b { margin-left: auto; font-variant-numeric: tabular-nums; }
+.sheet h3 { font-size: 15px; margin: 20px 0 4px; }
+.st-list { list-style: none; margin: 0; padding: 0; }
+.st-item { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.st-info b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-info small { display: block; color: var(--ink-2); font-size: 12.5px; line-height: 1.4; }
+.st-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+.btn-sm { min-height: 34px; padding: 0 11px; font-size: 13px; border-radius: 9px; }
+.btn-danger { color: var(--danger); border-color: #f1c9c7; }
+.btn-sm:disabled { opacity: .45; }
 
 .badge-none { background: var(--bg-2); color: var(--ink-2); }
 .saved-track { background: var(--bg-2); border-radius: 12px; padding: 10px 12px; margin: 6px 0 4px; }
