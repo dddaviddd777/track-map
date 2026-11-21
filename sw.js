@@ -1,6 +1,6 @@
 // Service worker: fa que l'app i els mapes funcionin sense connexió.
 // Quan canviïs fitxers de l'app, puja el número de versió perquè els mòbils s'actualitzin.
-const APP_CACHE = 'app-v2';
+const APP_CACHE = 'app-v3';
 const TILE_CACHE = 'tiles-v1';
 const TILE_HOSTS = ['geoserveis.icgc.cat'];
 
@@ -22,7 +22,10 @@ const APP_FILES = [
 ];
 
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(APP_CACHE).then(c => c.addAll(APP_FILES)).then(() => self.skipWaiting()));
+  // cache: 'reload' evita agafar fitxers antics de la memòria del navegador
+  event.waitUntil(caches.open(APP_CACHE)
+    .then(c => c.addAll(APP_FILES.map(u => new Request(u, { cache: 'reload' }))))
+    .then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', event => {

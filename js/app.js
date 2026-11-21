@@ -746,7 +746,15 @@ async function init() {
   } catch { /* API no disponible */ }
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
+    // Quan hi ha una versió nova de l'app, es recarrega sola un cop instal·lada
+    const hadController = !!navigator.serviceWorker.controller;
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController || reloaded) return;
+      reloaded = true;
+      location.reload();
+    });
+    navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).catch(() => {});
   }
   window.addEventListener('offline', () => toast('Sense connexió: es fan servir els mapes guardats'));
 }
