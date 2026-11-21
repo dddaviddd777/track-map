@@ -65,16 +65,21 @@ export async function download(plan, { onProgress, signal, concurrency = 6 } = {
   const urls = plan.flatMap(p => p.urls);
   const total = urls.length;
   let next = 0, done = 0, bytes = 0, failed = 0;
+  let totalBytes = 0;   // tot el que ocupa aquesta zona, incloent-hi el que ja estava guardat
 
   async function worker() {
     while (next < total && !signal?.aborted) {
       const url = urls[next++];
       try {
-        if (!(await cache.match(url))) {
+        const hit = await cache.match(url);
+        if (hit) {
+          totalBytes += Number(hit.headers.get('content-length')) || 0;
+        } else {
           const r = await fetchWithRetry(url, signal);
           if (r.ok) {
             const blob = await r.clone().blob();
             bytes += blob.size;
+            totalBytes += blob.size;
             await cache.put(url, r);
           } else if (r.status !== 404) {
             failed++;  // 404 = fora de la zona amb mapa, no és un error
@@ -89,7 +94,7 @@ export async function download(plan, { onProgress, signal, concurrency = 6 } = {
     }
   }
   await Promise.all(Array.from({ length: concurrency }, worker));
-  return { done, total, bytes, failed, aborted: !!signal?.aborted };
+  return { done, total, bytes, totalBytes, failed, aborted: !!signal?.aborted };
 }
 
 export async function storageInfo() {

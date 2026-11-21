@@ -41,6 +41,13 @@ const map = L.map('map', {
   minZoom: 7,
   maxBounds: L.latLngBounds(COVERAGE).pad(0.6),
   worldCopyJump: false,
+  // Rotació (complement leaflet-rotate): només la controlem amb el botó de la brúixola
+  rotate: true,
+  bearing: 0,
+  rotateControl: false,
+  touchRotate: false,
+  shiftKeyRotate: false,
+  compassBearing: false,
 });
 L.control.scale({ imperial: false, position: 'bottomleft', maxWidth: 110 }).addTo(map);
 map.attributionControl.setPrefix(false);
@@ -150,9 +157,31 @@ async function importFiles(files) {
   if (last) {
     closeSheets();
     await activateTrack(last.id);
-    toast(files.length > 1 ? `${files.length} tracks afegits` : 'Track afegit');
+    openSavedDialog(last, files.length);
   }
 }
+
+// Després d'afegir un track: guardar-lo només a ell, o també els mapes per anar sense cobertura
+function openSavedDialog(rec, count) {
+  $('#saved-title').textContent = count > 1 ? `${count} tracks guardats ✓` : 'Track guardat ✓';
+  $('#saved-name').textContent = rec.name;
+  const s = rec.stats;
+  $('#saved-meta').textContent = [fmtDist(s.distance), s.gain != null ? `↑ ${fmtEle(s.gain)}` : null].filter(Boolean).join(' · ');
+  state.dlMode = 'track';
+  renderDlLayers();
+  const plan = currentPlan();
+  const { bytes } = estimate(plan);
+  const names = plan.map(p => p.def.name.replace(/ \(.*\)/, '')).join(' + ');
+  $('#saved-estimate').textContent = plan.length ? `${names}, uns ${fmtBytes(bytes)}` : 'Tria quins mapes vols a «Canviar opcions»';
+  $('#saved-with-maps').disabled = !plan.length;
+  openSheet('#sheet-saved');
+}
+$('#saved-only').onclick = closeSheets;
+$('#saved-options').onclick = () => openDownload('track');
+$('#saved-with-maps').onclick = () => {
+  openDownload('track');
+  $('#dl-start').click();
+};
 
 // Fitxers rebuts des del menú «Compartir» d'Android (WhatsApp, Descàrregues, correu…).
 // El service worker els guarda i obre l'app amb ?compartit=1.
@@ -193,12 +222,17 @@ async function renderTrackList() {
       <button class="icon-btn del" aria-label="Esborrar el track"><svg viewBox="0 0 24 24"><path d="M5 7h14M10 7V4.5h4V7m-7.5 0 1 13h9l1-13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`;
     li.querySelector('b').textContent = t.name;
     li.querySelector('small').textContent = meta;
+    const badge = document.createElement('span');
     if (t.offline) {
-      const badge = document.createElement('span');
       badge.className = 'badge';
-      badge.textContent = 'OFFLINE';
-      li.querySelector('small').append(' ', badge);
+      badge.textContent = t.offline.bytes ? `Offline · ${fmtBytes(t.offline.bytes)}` : 'Offline';
+      badge.title = 'Mapes guardats: es pot fer servir sense cobertura';
+    } else {
+      badge.className = 'badge badge-none';
+      badge.textContent = 'Sense mapes';
+      badge.title = 'Cal cobertura per veure el mapa. Toca la fletxa per descarregar-los.';
     }
+    li.querySelector('small').append(' ', badge);
     li.querySelector('.track-main').onclick = async () => { closeSheets(); await activateTrack(t.id); };
     li.querySelector('.dl').onclick = async () => { await activateTrack(t.id, false); openDownload('track'); };
     li.querySelector('.del').onclick = async () => {
@@ -258,7 +292,7 @@ function drawTrack() {
       icon: L.divIcon({
         className: 'trk-arrow',
         iconSize: [16, 16],
-        html: `<svg viewBox="0 0 16 16" style="transform:rotate(${ang}deg)"><path d="M8 2 13.5 13 8 10.2 2.5 13Z" fill="#d4007a" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/></svg>`,
+        html: `<svg viewBox="0 0 16 16" data-ang="${ang}" style="transform:rotate(${screenAngle(ang)}deg)"><path d="M8 2 13.5 13 8 10.2 2.5 13Z" fill="#d4007a" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/></svg>`,
       }),
     }).addTo(g);
     nextAt += every;
@@ -581,6 +615,8 @@ function onPositionError(err) {
 }
 
 function startCompass() {
+  if (state.compassStarted) return;
+  state.compassStarted = true;
   const handler = e => {
     if (e.alpha == null) return;
     if (e.type === 'deviceorientation' && e.absolute !== true) return;
@@ -603,9 +639,72 @@ function updateHeading() {
     const moving = state.pos?.speed > 1.2 && Number.isFinite(state.pos?.heading);
     const h = moving ? state.pos.heading : state.compass;
     el.classList.toggle('on', h != null);
-    if (h != null) el.style.transform = `rotate(${h}deg)`;
+    if (h != null) el.style.transform = `rotate(${screenAngle(h)}deg)`;
   });
 }
+
+// ---------------------------------------------------------------- Orientació del mapa (nord amunt / on apunta el mòbil)
+
+// Angle a la pantalla d'una direcció geogràfica (0 = nord), tenint en compte el gir del mapa
+function screenAngle(geoDeg) {
+  return geoDeg + (map.getBearing?.() || 0);
+}
+
+const angleDiff = (a, b) => ((a - b + 540) % 360) - 180;   // diferència més curta, entre -180 i 180
+let orientRaf = 0, lastBearingSet = 0;
+
+function setHeadingUp(on) {
+  state.headingUp = on;
+  const btn = $('#btn-compass');
+  btn.setAttribute('aria-pressed', String(on));
+  btn.setAttribute('aria-label', on ? 'Orientació del mapa: segons el mòbil' : 'Orientació del mapa: nord amunt');
+  if (on) {
+    if (state.watchId == null) startGeo(); else startCompass();
+    if (state.pos) { setFollow(true); map.setView([state.pos.lat, state.pos.lon], Math.max(map.getZoom(), 15)); }
+    toast('El mapa gira segons on apunta el mòbil', 2200);
+    // Si en un moment no arriba cap lectura de la brúixola, el dispositiu no en té
+    setTimeout(() => {
+      if (state.headingUp && state.compass == null) {
+        toast('Aquest dispositiu no té brúixola', 4000);
+        setHeadingUp(false);
+      }
+    }, 2500);
+    orientLoop();
+  } else {
+    cancelAnimationFrame(orientRaf);
+    orientRaf = 0;
+    map.setBearing(0);
+    afterRotate();
+  }
+}
+
+// Gira el mapa de mica en mica cap a la direcció de la brúixola (evita salts i tremolor)
+function orientLoop() {
+  if (!state.headingUp) return;
+  orientRaf = requestAnimationFrame(orientLoop);
+  if (state.compass == null) return;
+  const now = performance.now();
+  if (now - lastBearingSet < 60) return;            // com a molt ~16 vegades per segon
+  const current = map.getBearing();
+  const target = -state.compass;
+  const d = angleDiff(target, current);
+  if (Math.abs(d) < 1.5) return;
+  lastBearingSet = now;
+  map.setBearing(current + d * 0.35);
+  afterRotate();
+}
+
+// Coses que s'han de redibuixar quan el mapa gira
+function afterRotate() {
+  const b = map.getBearing() || 0;
+  $('#btn-compass .needle').style.transform = `rotate(${b}deg)`;
+  document.querySelectorAll('.trk-arrow svg[data-ang]').forEach(s => {
+    s.style.transform = `rotate(${Number(s.dataset.ang) + b}deg)`;
+  });
+  updateHeading();
+}
+
+$('#btn-compass').onclick = () => setHeadingUp(!state.headingUp);
 
 function setFollow(on) {
   state.follow = on;
@@ -751,7 +850,7 @@ $('#dl-start').onclick = async () => {
       : 'Fet! Ja pots fer servir aquests mapes sense cobertura.';
     if (wasTrack && !res.failed) {
       const rec = state.track.rec;
-      rec.offline = { at: Date.now(), layers: plan.map(p => p.def.id), maxZoom: Number($('#dl-maxzoom').value) };
+      rec.offline = { at: Date.now(), layers: plan.map(p => p.def.id), maxZoom: Number($('#dl-maxzoom').value), bytes: res.totalBytes };
       await saveTrack(rec);
     }
   }

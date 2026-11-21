@@ -1,6 +1,6 @@
 // Service worker: fa que l'app i els mapes funcionin sense connexió.
 // Quan canviïs fitxers de l'app, puja el número de versió perquè els mòbils s'actualitzin.
-const APP_CACHE = 'app-v5';
+const APP_CACHE = 'app-v6';
 const TILE_CACHE = 'tiles-v1';
 const TILE_HOSTS = ['geoserveis.icgc.cat'];
 
@@ -17,6 +17,7 @@ const APP_FILES = [
   './js/offline.js',
   './vendor/leaflet/leaflet.js',
   './vendor/leaflet/leaflet.css',
+  './vendor/leaflet-rotate/leaflet-rotate.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
 ];

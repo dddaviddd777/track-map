@@ -34,6 +34,11 @@
     </button>
   </div>
 
+  <!-- Orientació: nord amunt / segons on apunta el mòbil -->
+  <button class="fab fab-compass" id="btn-compass" title="Orientació del mapa" aria-label="Orientació del mapa: nord amunt" aria-pressed="false">
+    <svg viewBox="0 0 24 24"><g class="needle"><path d="M12 2.5 15.2 12H8.8Z" fill="#d93025"/><path d="M12 21.5 8.8 12h6.4Z" fill="currentColor" opacity=".55"/></g></svg>
+  </button>
+
   <button class="fab fab-big" id="btn-locate" title="La meva posició" aria-label="La meva posició" data-state="off">
     <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2" fill="currentColor"/><circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
   </button>
@@ -82,6 +87,19 @@
     </label>
     <ul id="track-list" class="track-list"></ul>
     <p class="fine" id="track-empty">Encara no tens cap track. Descarrega'l de Wikiloc en format GPX i afegeix-lo aquí.</p>
+  </section>
+
+  <!-- Panell: track acabat d'afegir -->
+  <section class="sheet" id="sheet-saved" hidden aria-label="Track guardat">
+    <header><h2 id="saved-title">Track guardat ✓</h2><button class="icon-btn close-sheet" aria-label="Tancar"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></button></header>
+    <p class="saved-track"><b id="saved-name"></b><small id="saved-meta"></small></p>
+    <p>Vols guardar també els mapes per fer-lo servir <b>sense cobertura</b>?</p>
+    <p class="fine" id="saved-estimate"></p>
+    <div class="actions actions-col">
+      <button class="btn btn-primary" id="saved-with-maps">Guardar amb mapes</button>
+      <button class="btn" id="saved-only">Només el track</button>
+    </div>
+    <button class="link-file link-btn" id="saved-options">Canviar opcions dels mapes</button>
   </section>
 
   <!-- Panell: descàrrega offline -->
@@ -135,6 +153,7 @@
   <div id="toast" role="status" aria-live="polite" hidden></div>
 
   <script src="vendor/leaflet/leaflet.js"></script>
+  <script src="vendor/leaflet-rotate/leaflet-rotate.js"></script>
   <script type="module" src="js/app.js"></script>
 </body>
 </html>
