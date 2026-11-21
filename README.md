@@ -1,0 +1,35 @@
+# Track Map
+
+App per seguir tracks de Wikiloc (GPX/KML) sobre mapes de l'ICGC, al mòbil Android, també sense cobertura.
+
+## Què fa
+
+- **Afegir tracks**: botó de la línia ➜ *Afegir track* ➜ tria el fitxer GPX o KML descarregat de Wikiloc.
+- **Mapes**: topogràfic de l'ICGC (corriols i corbes de nivell), satèlit (ortofoto) i un topogràfic lleuger.
+- **La teva posició**: botó gran de baix. Un toc et centra i et segueix; si mous el mapa, deixa de seguir-te.
+- **Seguiment**: a la barra de baix veus els km fets i els que falten, la pujada i la baixada que queden, i un avís si t'allunyes més de 40 m del track.
+- **Perfil d'altitud**: toca'l o arrossega-hi el dit per veure aquell punt al mapa. Toca el nom del track per amagar-lo.
+- **Pantalla encesa**: botó del sol. Evita que la pantalla s'apagui mentre camines.
+- **Sense cobertura**: botó de la fletxa avall ➜ *Descarregar*. Guarda el mapa al voltant del track (o de la zona que veus) **abans de sortir de casa, amb wifi**. El GPS funciona sense dades mòbils.
+
+## Consells
+
+- Descarrega els mapes de cada ruta a casa. El *Topogràfic* ocupa molt (uns 300 kB per tessel·la); si vas just d'espai, tria *Topogràfic lleuger*.
+- Sense cobertura, el mapa només es veu fins al nivell de detall que hagis descarregat. Si t'hi apropes més, es veurà en blanc.
+- L'app només segueix la teva posició amb la pantalla encesa i l'app oberta.
+
+## Instal·lar-la al mòbil
+
+1. Obre l'adreça de l'app amb **Chrome** a l'Android.
+2. Menú ⋮ ➜ **Afegeix a la pantalla d'inici** (o *Instal·la l'aplicació*).
+3. Obre-la des de la icona i accepta el permís d'ubicació.
+
+## Mapes
+
+Mapes de l'[Institut Cartogràfic i Geològic de Catalunya](https://www.icgc.cat), llicència CC BY 4.0. Només cobreixen Catalunya.
+
+## Per a qui modifiqui el codi
+
+- Web estàtica sense compilar: HTML, CSS i JavaScript, amb [Leaflet](https://leafletjs.com) 1.9.4 a `vendor/`.
+- Prova local: `py -m http.server 8080` i obre `http://localhost:8080`.
+- Quan canviïs fitxers, puja `APP_CACHE` a `sw.js` (per exemple `app-v2`) perquè els mòbils agafin la versió nova.

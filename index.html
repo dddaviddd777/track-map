@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="ca">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#1f6f4a">
+  <meta name="description" content="Segueix tracks GPX de Wikiloc sobre mapes de l'ICGC, també sense cobertura.">
+  <title>Track Map</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <div id="map" aria-label="Mapa"></div>
+
+  <!-- Botons laterals -->
+  <div class="fab-col" role="toolbar" aria-label="Eines">
+    <button class="fab" id="btn-tracks" title="Els meus tracks" aria-label="Els meus tracks">
+      <svg viewBox="0 0 24 24"><path d="M4 18c3-1 3-6 7-6s4 4 9-4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="4" cy="18" r="2.2" fill="currentColor"/><circle cx="20" cy="8" r="2.2" fill="currentColor"/></svg>
+    </button>
+    <button class="fab" id="btn-layers" title="Tipus de mapa" aria-label="Tipus de mapa">
+      <svg viewBox="0 0 24 24"><path d="M12 3 2 8.5 12 14l10-5.5L12 3Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="m2 13 10 5.5L22 13" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+    </button>
+    <button class="fab" id="btn-download" title="Mapes sense cobertura" aria-label="Mapes sense cobertura">
+      <svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 20h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <button class="fab" id="btn-wake" title="Mantenir la pantalla encesa" aria-label="Mantenir la pantalla encesa" aria-pressed="false">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    </button>
+  </div>
+
+  <button class="fab fab-big" id="btn-locate" title="La meva posició" aria-label="La meva posició" data-state="off">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2" fill="currentColor"/><circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+  </button>
+
+  <!-- Barra inferior del track actiu -->
+  <section id="trackbar" hidden>
+    <div class="tb-head">
+      <button class="tb-toggle" id="tb-toggle" aria-label="Mostrar o amagar el perfil" aria-expanded="true">
+        <span class="tb-name" id="tb-name"></span>
+        <svg class="chev" viewBox="0 0 24 24"><path d="m6 15 6-6 6 6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <button class="icon-btn" id="tb-close" aria-label="Treure el track del mapa">
+        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div id="tb-alert" class="tb-alert" hidden></div>
+    <div class="tb-stats" id="tb-stats"></div>
+    <div class="tb-profile" id="tb-profile">
+      <canvas id="profile"></canvas>
+    </div>
+  </section>
+
+  <!-- Fons dels panells -->
+  <div id="backdrop" hidden></div>
+
+  <!-- Panell: capes -->
+  <section class="sheet" id="sheet-layers" hidden aria-label="Tipus de mapa">
+    <header><h2>Tipus de mapa</h2><button class="icon-btn close-sheet" aria-label="Tancar"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></button></header>
+    <div id="layer-list" class="choice-list"></div>
+    <p class="fine">Mapes de l'Institut Cartogràfic i Geològic de Catalunya (llicència CC BY 4.0). Només cobreixen Catalunya.</p>
+  </section>
+
+  <!-- Panell: tracks -->
+  <section class="sheet" id="sheet-tracks" hidden aria-label="Els meus tracks">
+    <header><h2>Els meus tracks</h2><button class="icon-btn close-sheet" aria-label="Tancar"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></button></header>
+    <label class="btn btn-primary btn-file">
+      <svg viewBox="0 0 24 24"><path d="M12 19V8m0 0-4.5 4.5M12 8l4.5 4.5M5 4h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Afegir track (GPX o KML)
+      <input type="file" id="file-input" multiple hidden>
+    </label>
+    <ul id="track-list" class="track-list"></ul>
+    <p class="fine" id="track-empty">Encara no tens cap track. Descarrega'l de Wikiloc en format GPX i afegeix-lo aquí.</p>
+  </section>
+
+  <!-- Panell: descàrrega offline -->
+  <section class="sheet" id="sheet-download" hidden aria-label="Mapes sense cobertura">
+    <header><h2>Mapes sense cobertura</h2><button class="icon-btn close-sheet" aria-label="Tancar"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></button></header>
+    <div class="seg" role="tablist">
+      <button role="tab" id="dl-mode-track" aria-selected="true">Al voltant del track</button>
+      <button role="tab" id="dl-mode-area" aria-selected="false">Zona visible</button>
+    </div>
+    <p class="dl-target" id="dl-target"></p>
+    <fieldset class="dl-opts">
+      <legend>Mapes a descarregar</legend>
+      <div id="dl-layers"></div>
+    </fieldset>
+    <div class="row2">
+      <label class="field" id="dl-buffer-wrap">Amplada al voltant del track
+        <select id="dl-buffer">
+          <option value="250">250 m a cada costat</option>
+          <option value="500" selected>500 m a cada costat</option>
+          <option value="1000">1 km a cada costat</option>
+          <option value="2000">2 km a cada costat</option>
+        </select>
+      </label>
+      <label class="field">Detall màxim
+        <select id="dl-maxzoom">
+          <option value="16">Normal (zoom 16)</option>
+          <option value="17" selected>Alt (zoom 17)</option>
+          <option value="18">Màxim (zoom 18)</option>
+        </select>
+      </label>
+    </div>
+    <p class="estimate" id="dl-estimate"></p>
+    <div class="progress" id="dl-progress" hidden><div class="bar"><span id="dl-bar"></span></div><p id="dl-progress-text"></p></div>
+    <div class="actions">
+      <button class="btn btn-primary" id="dl-start">Descarregar</button>
+      <button class="btn" id="dl-cancel" hidden>Aturar</button>
+    </div>
+    <hr>
+    <p class="fine" id="storage-info"></p>
+    <button class="btn btn-danger-text" id="dl-clear">Esborrar tots els mapes descarregats</button>
+  </section>
+
+  <div id="toast" role="status" aria-live="polite" hidden></div>
+
+  <script src="vendor/leaflet/leaflet.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
