@@ -228,6 +228,22 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 16px 0 4px; }
 .actions { display: flex; gap: 10px; }
 .actions .btn { flex: 1; }
 
+/* Indicador del GPS */
+#gps-status {
+  position: fixed; left: 12px; top: calc(12px + var(--safe-t)); z-index: 1000;
+  display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px 0 9px;
+  border: 0; border-radius: 14px; background: rgba(255,255,255,.88);
+  box-shadow: 0 1px 4px rgba(0,0,0,.2); font: 600 12.5px/1 system-ui, sans-serif; color: var(--ink);
+  font-variant-numeric: tabular-nums; backdrop-filter: blur(4px);
+}
+#gps-status i { width: 9px; height: 9px; border-radius: 50%; background: #9aa0a6; flex: none; }
+#gps-status.gps-good i { background: #1e8e3e; }
+#gps-status.gps-fair i { background: #f2a900; }
+#gps-status.gps-bad i { background: var(--danger); }
+#gps-status.gps-bad span { color: var(--danger); }
+#gps-status.gps-wait i { animation: pulse 1.2s infinite; }
+#gps-status.gps-wait span { color: var(--ink-2); }
+
 /* Punts guardats */
 .saved-point { color: #f2a900; }
 .saved-point svg { width: 22px; height: 22px; filter: drop-shadow(0 1px 1.5px rgba(0,0,0,.5)); }

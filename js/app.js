@@ -759,10 +759,41 @@ map.on('contextmenu', e => {
   openPointPopup(e.latlng);
 });
 
+// ---------------------------------------------------------------- Indicador de l'estat del GPS
+
+const GPS_STALE_MS = 60000;   // sense posició nova en 60 s = sense senyal (quiet, el mòbil n'envia menys)
+
+function gpsLevel() {
+  if (state.gpsStatus === 'denied') return { cls: 'bad', text: 'GPS sense permís', detail: 'L\'app no té permís d\'ubicació. Dona-li permís a la configuració del navegador.' };
+  if (state.gpsStatus === 'searching' || !state.pos) return { cls: 'wait', text: 'Buscant GPS…', detail: 'Buscant senyal GPS. A l\'aire lliure sol trigar uns segons.' };
+  const age = Date.now() - (state.lastFix || 0);
+  if (age > GPS_STALE_MS) return { cls: 'wait', text: 'Sense senyal', detail: `Fa ${Math.round(age / 1000)} s que no arriba cap posició nova. La del mapa és l'última coneguda.` };
+  const acc = Math.round(state.pos.acc);
+  const extra = (state.pos.alt != null ? ` · altitud ${fmtEle(state.pos.alt)}` : '') + ` · actualitzat fa ${Math.max(0, Math.round(age / 1000))} s`;
+  if (acc <= 15) return { cls: 'good', text: `±${acc} m`, detail: `Senyal GPS bo: precisió ±${acc} m${extra}` };
+  if (acc <= 50) return { cls: 'fair', text: `±${acc} m`, detail: `Senyal GPS acceptable: precisió ±${acc} m${extra}` };
+  return { cls: 'bad', text: `±${acc} m`, detail: `Senyal GPS feble: precisió ±${acc} m${extra}. Pot millorar en un lloc més obert.` };
+}
+
+function updateGpsStatus() {
+  const el = $('#gps-status');
+  if (state.gpsStatus == null) { el.hidden = true; return; }
+  const lvl = gpsLevel();
+  el.hidden = false;
+  el.className = `gps-${lvl.cls}`;
+  el.querySelector('span').textContent = lvl.text;
+  el.title = lvl.detail;
+  el.setAttribute('aria-label', lvl.detail);
+}
+setInterval(() => { if (state.gpsStatus) updateGpsStatus(); }, 5000);
+$('#gps-status').onclick = () => toast(gpsLevel().detail, 4500);
+
 function startGeo() {
   if (state.watchId != null) return;
   if (!('geolocation' in navigator)) { toast('Aquest navegador no té GPS'); return; }
   $('#btn-locate').dataset.state = 'searching';
+  state.gpsStatus = 'searching';
+  updateGpsStatus();
   state.watchId = navigator.geolocation.watchPosition(onPosition, onPositionError, {
     enableHighAccuracy: true,
     maximumAge: 2000,
@@ -775,6 +806,9 @@ function onPosition(pos) {
   const c = pos.coords;
   const first = !state.pos;
   state.pos = { lat: c.latitude, lon: c.longitude, acc: c.accuracy, heading: c.heading, speed: c.speed, alt: c.altitude };
+  state.lastFix = Date.now();
+  state.gpsStatus = 'ok';
+  updateGpsStatus();
   const ll = [c.latitude, c.longitude];
   ensureMeMarker(ll);
   meMarker.setLatLng(ll);
@@ -791,6 +825,8 @@ function onPosition(pos) {
 
 function onPositionError(err) {
   if (err.code === err.PERMISSION_DENIED) {
+    state.gpsStatus = 'denied';
+    updateGpsStatus();
     toast('Cal donar permís d\'ubicació a l\'app (configuració del navegador).', 6000);
     navigator.geolocation.clearWatch(state.watchId);
     state.watchId = null;
