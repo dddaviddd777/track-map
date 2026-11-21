@@ -27,6 +27,19 @@ export const LAYERS = [
     thumb: 'https://geoserveis.icgc.cat/servei/catalunya/mapa-base/wmts/orto/MON3857NW/15/16551/12218.png',
   },
   {
+    // Versió del satèlit amb noms (pobles, cims, masies, camins). No surt al selector:
+    // s'activa amb el botó «Noms» quan el mapa de satèlit està posat.
+    id: 'orto-noms',
+    name: 'Satèlit amb noms',
+    desc: 'Ortofoto amb noms de llocs i camins',
+    url: 'https://geoserveis.icgc.cat/servei/catalunya/mapa-base/wmts/orto-hibrida/MON3857NW/{z}/{x}/{y}.png',
+    tileSize: 256,
+    zoomOffset: 0,
+    maxNativeZoom: 19,
+    avgKB: 180,
+    inPicker: false,
+  },
+  {
     id: 'simple',
     name: 'Topogràfic lleuger',
     desc: 'Menys detall, però ocupa molt menys espai',

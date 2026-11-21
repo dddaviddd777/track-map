@@ -15,6 +15,7 @@ const FAR_M = 1500;         // massa lluny: no té sentit calcular el progrés
 
 const state = {
   layerId: store.get('layer', DEFAULT_LAYER),
+  labels: store.get('labels', false),   // noms visibles al mapa de satèlit
   baseLayer: null,
   track: null,            // { rec, info }
   trackGroup: null,
@@ -51,17 +52,29 @@ map.on('dragstart', () => setFollow(false));
 
 function setBaseLayer(id) {
   const def = layerById(id);
+  // Al satèlit, el botó «Noms» tria entre l'ortofoto normal i la que porta noms
+  const shown = def.id === 'orto' && state.labels ? layerById('orto-noms') : def;
   if (state.baseLayer) map.removeLayer(state.baseLayer);
-  state.baseLayer = makeTileLayer(def).addTo(map);
+  state.baseLayer = makeTileLayer(shown).addTo(map);
   state.layerId = def.id;
   store.set('layer', def.id);
+  const btn = $('#btn-labels');
+  btn.hidden = def.id !== 'orto';
+  btn.setAttribute('aria-pressed', String(state.labels));
   renderLayerList();
 }
+
+$('#btn-labels').onclick = () => {
+  state.labels = !state.labels;
+  store.set('labels', state.labels);
+  setBaseLayer(state.layerId);
+  toast(state.labels ? 'Noms visibles' : 'Noms amagats', 1800);
+};
 
 function renderLayerList() {
   const list = $('#layer-list');
   list.innerHTML = '';
-  for (const def of LAYERS) {
+  for (const def of LAYERS.filter(l => l.inPicker !== false)) {
     const b = document.createElement('button');
     b.className = 'choice';
     b.setAttribute('role', 'radio');
@@ -620,7 +633,7 @@ function openDownload(mode) {
 function renderDlLayers() {
   const box = $('#dl-layers');
   if (box.childElementCount) return;
-  const chosen = store.get('dlLayers', ['topo', 'orto']);
+  const chosen = store.get('dlLayers', state.labels ? ['topo', 'orto', 'orto-noms'] : ['topo', 'orto']);
   for (const def of LAYERS) {
     const l = document.createElement('label');
     l.className = 'check';

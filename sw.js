@@ -1,6 +1,6 @@
 // Service worker: fa que l'app i els mapes funcionin sense connexió.
 // Quan canviïs fitxers de l'app, puja el número de versió perquè els mòbils s'actualitzin.
-const APP_CACHE = 'app-v3';
+const APP_CACHE = 'app-v4';
 const TILE_CACHE = 'tiles-v1';
 const TILE_HOSTS = ['geoserveis.icgc.cat'];
 

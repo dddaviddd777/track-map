@@ -6,6 +6,7 @@ App per seguir tracks de Wikiloc (GPX/KML) sobre mapes de l'ICGC, al mòbil Andr
 
 - **Afegir tracks**: botó de la línia ➜ *Afegir track* ➜ tria el fitxer GPX o KML descarregat de Wikiloc.
 - **Mapes**: topogràfic de l'ICGC (corriols i corbes de nivell), satèlit (ortofoto) i un topogràfic lleuger.
+- **Noms al satèlit**: amb el satèlit posat, el botó *Aa* mostra o amaga els noms de pobles, cims, masies i camins. Per tenir-los sense cobertura, descarrega també «Satèlit amb noms» (ocupa unes 5 vegades més).
 - **La teva posició**: botó gran de baix. Un toc et centra i et segueix; si mous el mapa, deixa de seguir-te.
 - **Seguiment**: a la barra de baix veus els km fets i els que falten, la pujada i la baixada que queden, i un avís si t'allunyes més de 40 m del track.
 - **Perfil d'altitud**: toca'l o arrossega-hi el dit per veure aquell punt al mapa. Toca el nom del track per amagar-lo.
