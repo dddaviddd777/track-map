@@ -1,4 +1,4 @@
-import { getAllTracks, getTrack, saveTrack, deleteTrack } from './db.js';
+import { getAllTracks, getTrack, saveTrack, deleteTrack, getAllPoints, savePoint, deletePoint } from './db.js';
 import { parseTrackFile } from './gpx.js';
 import { analyse, locateOnTrack, bearing, haversine, fmtDist, fmtEle, fmtInt, fmtBytes } from './geo.js';
 import { LAYERS, DEFAULT_LAYER, COVERAGE, layerById, makeTileLayer } from './layers.js';
@@ -120,7 +120,7 @@ function toast(msg, ms = 3500) {
 }
 
 $('#btn-layers').onclick = () => openSheet('#sheet-layers');
-$('#btn-tracks').onclick = async () => { await renderTrackList(); openSheet('#sheet-tracks'); };
+$('#btn-tracks').onclick = async () => { await renderTrackList(); showListTab(store.get('listTab', 'tracks')); openSheet('#sheet-tracks'); };
 $('#btn-download').onclick = () => openDownload(state.track ? 'track' : 'area');
 
 // ---------------------------------------------------------------- Tracks
@@ -517,11 +517,13 @@ const ICONS = {
   map: '<svg viewBox="0 0 24 24"><path d="M12 22s7-6.2 7-12a7 7 0 0 0-14 0c0 5.8 7 12 7 12Z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="10" r="2.6" fill="currentColor"/></svg>',
   copy: '<svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
   share: '<svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="6" cy="12" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="19" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><path d="m8.3 10.8 7.4-4.4M8.3 13.2l7.4 4.4" stroke="currentColor" stroke-width="2"/></svg>',
+  star: '<svg viewBox="0 0 24 24"><path d="m12 2.8 2.8 5.8 6.3.9-4.6 4.4 1.1 6.3L12 17.2l-5.6 3 1.1-6.3-4.6-4.4 6.3-.9Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>',
+  trash: '<svg viewBox="0 0 24 24"><path d="M5 7h14M10 7V4.5h4V7m-7.5 0 1 13h9l1-13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
 };
 
-function popupButton(icon, label, onClick, primary = false) {
+function popupButton(icon, label, onClick, primary = false, extraClass = '') {
   const b = document.createElement(onClick.href ? 'a' : 'button');
-  b.className = 'pp-btn' + (primary ? ' pp-primary' : '');
+  b.className = 'pp-btn' + (primary ? ' pp-primary' : '') + (extraClass ? ' ' + extraClass : '');
   b.innerHTML = ICONS[icon] + '<span></span>';
   b.querySelector('span').textContent = label;
   if (onClick.href) { b.href = onClick.href; b.target = '_blank'; b.rel = 'noopener'; }
@@ -558,9 +560,14 @@ function openPointPopup(ll, { mine = false } = {}) {
   info.textContent = infoText;
   box.append(title, info);
 
-  if (mine) box.append(popupButton('share', 'Compartir la meva ubicació', () => shareMyLocation(ll), true));
+  if (mine) {
+    box.append(popupButton('share', 'Compartir la meva ubicació', () => shareMyLocation(ll), true));
+    box.append(popupButton('star', 'Guardar la meva ubicació', () => saveNewPoint(ll, state.pos?.alt), false, 'pp-star'));
+  } else {
+    box.append(popupButton('star', 'Guardar punt', () => saveNewPoint(ll), true, 'pp-star'));
+  }
   box.append(
-    popupButton('route', 'Com arribar-hi', { href: gmapsDirections(ll) }, !mine),
+    popupButton('route', 'Com arribar-hi', { href: gmapsDirections(ll) }),
     popupButton('map', 'Veure a Google Maps', { href: gmapsSearch(ll) }),
     popupButton('copy', 'Copiar coordenades', () => copyText(coordText(ll))),
   );
@@ -573,6 +580,177 @@ function openPointPopup(ll, { mine = false } = {}) {
     .setLatLng(ll).setContent(box).openOn(map);
   popup.on('remove', () => { if (!mine) pointPin?.remove(); });
 }
+
+// ---------------------------------------------------------------- Punts guardats (marcadors amb nota)
+
+const pointMarkers = new Map();   // id → marcador al mapa
+const pointsLayer = L.layerGroup().addTo(map);
+const fmtWhen = t => new Date(t).toLocaleString('ca', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+const pointLL = p => L.latLng(p.lat, p.lon);
+
+function addPointMarker(p) {
+  const m = L.marker(pointLL(p), {
+    zIndexOffset: 500,
+    keyboard: false,
+    icon: L.divIcon({ className: 'saved-point', iconSize: [22, 22], html: ICONS.star }),
+  });
+  m.on('click', e => { L.DomEvent.stopPropagation(e); openSavedPoint(p); });
+  m.addTo(pointsLayer);
+  pointMarkers.set(p.id, m);
+}
+
+async function loadPoints() {
+  pointsLayer.clearLayers();
+  pointMarkers.clear();
+  for (const p of await getAllPoints()) addPointMarker(p);
+}
+
+async function saveNewPoint(ll, ele = null) {
+  const p = {
+    id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()),
+    lat: +ll.lat.toFixed(6),
+    lon: +ll.lng.toFixed(6),
+    ele: Number.isFinite(ele) ? Math.round(ele) : null,
+    note: '',
+    created: Date.now(),
+  };
+  await savePoint(p);
+  addPointMarker(p);
+  if (navigator.vibrate) navigator.vibrate([20, 40, 20]);
+  openSavedPoint(p, true);
+  toast('Punt guardat ★', 1800);
+}
+
+function openSavedPoint(p, focusNote = false) {
+  map.closePopup();
+  const ll = pointLL(p);
+  const box = document.createElement('div');
+  box.className = 'pp';
+  const title = document.createElement('b');
+  title.textContent = `★ ${fmtWhen(p.created)}`;
+  const info = document.createElement('small');
+  let infoText = coordText(ll) + (p.ele != null ? ` · ${fmtEle(p.ele)}` : '');
+  if (state.pos) infoText += ` · a ${fmtDist(haversine(state.pos.lat, state.pos.lon, p.lat, p.lon))} de tu`;
+  info.textContent = infoText;
+
+  // Nota: es guarda sola mentre escrius
+  const note = document.createElement('textarea');
+  note.className = 'pp-note';
+  note.rows = 3;
+  note.placeholder = 'Escriu una nota (p. ex. «Cep de 800 g»)';
+  note.value = p.note || '';
+  let saveTimer;
+  const saveNote = () => { clearTimeout(saveTimer); if (p.note !== note.value) { p.note = note.value; savePoint(p); } };
+  note.addEventListener('input', () => { clearTimeout(saveTimer); saveTimer = setTimeout(saveNote, 400); });
+  note.addEventListener('blur', saveNote);
+  // Que escriure a la nota no mogui ni faci zoom al mapa
+  L.DomEvent.disableClickPropagation(note);
+  L.DomEvent.disableScrollPropagation(note);
+
+  // Botons compactes en una fila, perquè la finestra càpiga bé al mòbil
+  const row = document.createElement('div');
+  row.className = 'pp-row';
+  row.append(
+    popupButton('route', 'Com arribar', { href: gmapsDirections(ll) }),
+    popupButton('share', 'Compartir', () => sharePoint(p)),
+    popupButton('copy', 'Copiar', () => copyText(coordText(ll))),
+  );
+  const del = document.createElement('button');
+  del.className = 'pp-del';
+  del.textContent = 'Esborrar el punt';
+  del.onclick = () => removePoint(p);
+  box.append(title, info, note, row, del);
+  const popup = L.popup({ className: 'point-popup', offset: [0, -8], maxWidth: 270, minWidth: 230, autoPanPaddingTopLeft: [20, 20], autoPanPaddingBottomRight: [72, 20 + (parseInt(getComputedStyle(document.documentElement).getPropertyValue('--tb-h')) || 0)] })
+    .setLatLng(ll).setContent(box).openOn(map);
+  popup.on('remove', () => { saveNote(); if (!$('#sheet-tracks').hidden) renderPointList(); });
+  if (focusNote) setTimeout(() => note.focus(), 250);
+}
+
+async function sharePoint(p) {
+  const ll = pointLL(p);
+  const text = `${p.note ? p.note + '\n' : ''}Punt guardat: ${coordText(ll)}`;
+  const url = gmapsSearch(ll);
+  if (navigator.share) {
+    try { await navigator.share({ title: 'Punt guardat', text, url }); return; }
+    catch (e) { if (e.name === 'AbortError') return; }
+  }
+  copyText(`${text}\n${url}`);
+}
+
+async function removePoint(p) {
+  if (!confirm(`Vols esborrar aquest punt${p.note ? ` («${p.note.slice(0, 40)}»)` : ''}?`)) return;
+  await deletePoint(p.id);
+  pointMarkers.get(p.id)?.remove();
+  pointMarkers.delete(p.id);
+  map.closePopup();
+  toast('Punt esborrat');
+  if (!$('#sheet-tracks').hidden) renderPointList();
+}
+
+async function renderPointList() {
+  const points = (await getAllPoints()).sort((a, b) => b.created - a.created);
+  const ul = $('#point-list');
+  ul.innerHTML = '';
+  $('#point-empty').hidden = points.length > 0;
+  $('#points-export').disabled = !points.length;
+  $('#tab-points-count').textContent = points.length ? ` (${points.length})` : '';
+  for (const p of points) {
+    const li = document.createElement('li');
+    li.className = 'track-item';
+    li.innerHTML = `<span class="pt-star">${ICONS.star}</span>
+      <button class="track-main"><b></b><small></small></button>
+      <button class="icon-btn del" aria-label="Esborrar el punt">${ICONS.trash}</button>`;
+    li.querySelector('b').textContent = p.note ? p.note.split('\n')[0] : 'Sense nota';
+    li.querySelector('b').classList.toggle('muted', !p.note);
+    const dist = state.pos ? ` · a ${fmtDist(haversine(state.pos.lat, state.pos.lon, p.lat, p.lon))}` : '';
+    li.querySelector('small').textContent = fmtWhen(p.created) + dist;
+    li.querySelector('.track-main').onclick = () => {
+      closeSheets();
+      setFollow(false);
+      map.setView(pointLL(p), Math.max(map.getZoom(), 16));
+      setTimeout(() => openSavedPoint(p), 300);
+    };
+    li.querySelector('.del').onclick = () => removePoint(p);
+    ul.append(li);
+  }
+}
+
+// Còpia de seguretat: tots els punts en un fitxer GPX (es pot obrir a Wikiloc, Google Earth…)
+$('#points-export').onclick = async () => {
+  const points = (await getAllPoints()).sort((a, b) => a.created - b.created);
+  if (!points.length) return;
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[c]));
+  const wpts = points.map(p => {
+    const name = p.note ? p.note.split('\n')[0].slice(0, 60) : `Punt ${fmtWhen(p.created)}`;
+    return `  <wpt lat="${p.lat}" lon="${p.lon}">${p.ele != null ? `<ele>${p.ele}</ele>` : ''}<time>${new Date(p.created).toISOString()}</time><name>${esc(name)}</name>${p.note ? `<desc>${esc(p.note)}</desc>` : ''}</wpt>`;
+  }).join('\n');
+  const gpx = `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Track Map" xmlns="http://www.topografix.com/GPX/1/1">\n  <metadata><name>Punts guardats a Track Map</name></metadata>\n${wpts}\n</gpx>\n`;
+  const fileName = `punts-trackmap-${new Date().toISOString().slice(0, 10)}.gpx`;
+  const file = new File([gpx], fileName, { type: 'application/gpx+xml' });
+  if (navigator.canShare?.({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: 'Punts guardats' }); return; }
+    catch (e) { if (e.name === 'AbortError') return; }
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(file);
+  a.download = fileName;
+  document.body.append(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  toast('Fitxer de punts descarregat');
+};
+
+// Pestanyes del panell «Els meus tracks»: Tracks | Punts
+function showListTab(tab) {
+  store.set('listTab', tab);
+  $('#tab-btn-tracks').setAttribute('aria-selected', String(tab === 'tracks'));
+  $('#tab-btn-points').setAttribute('aria-selected', String(tab === 'points'));
+  $('#tab-tracks').hidden = tab !== 'tracks';
+  $('#tab-points').hidden = tab !== 'points';
+  if (tab === 'points') renderPointList();
+}
+$('#tab-btn-tracks').onclick = () => showListTab('tracks');
+$('#tab-btn-points').onclick = () => showListTab('points');
 
 // Mantenir premut un punt del mapa (al mòbil) o clic dret (a l'ordinador)
 map.on('contextmenu', e => {
@@ -596,7 +774,7 @@ function startGeo() {
 function onPosition(pos) {
   const c = pos.coords;
   const first = !state.pos;
-  state.pos = { lat: c.latitude, lon: c.longitude, acc: c.accuracy, heading: c.heading, speed: c.speed };
+  state.pos = { lat: c.latitude, lon: c.longitude, acc: c.accuracy, heading: c.heading, speed: c.speed, alt: c.altitude };
   const ll = [c.latitude, c.longitude];
   ensureMeMarker(ll);
   meMarker.setLatLng(ll);
@@ -914,7 +1092,7 @@ async function openStorage() {
   let ownedBytes = 0;
   for (const u of owned) ownedBytes += sizes.get(u);
   const looseBytes = totalTiles - ownedBytes;
-  const tracksBytes = trackRows.reduce((s, r) => s + r.own, 0);
+  const tracksBytes = trackRows.reduce((s, r) => s + r.own, 0) + new Blob([JSON.stringify(await getAllPoints())]).size;
   const trackMaps = (() => { const set = new Set(); trackRows.forEach(r => r.t.offline && urlsForTrack(r.t, layerById).forEach(u => sizes.has(u) && set.add(u))); let b = 0; set.forEach(u => (b += sizes.get(u))); return b; })();
   const areaMaps = Math.max(0, ownedBytes - trackMaps);
 
@@ -926,7 +1104,7 @@ async function openStorage() {
     ['Mapes dels tracks', trackMaps, 'var(--green)'],
     ['Zones descarregades', areaMaps, '#1a73e8'],
     ['Mapes vistos navegant', looseBytes, '#f9ab00'],
-    ['Tracks', tracksBytes, 'var(--track)'],
+    ['Tracks i punts', tracksBytes, 'var(--track)'],
   ];
   for (const [label, b, color] of parts) {
     if (total > 0 && b > 0) {
@@ -1083,6 +1261,7 @@ async function init() {
   }
   applyProfileVisibility();
   await importSharedFiles();
+  loadPoints();
 
   // Si ja tenim permís d'ubicació, comencem a seguir la posició de seguida.
   try {

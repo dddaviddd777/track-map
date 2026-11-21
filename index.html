@@ -75,6 +75,22 @@
   <!-- Panell: tracks -->
   <section class="sheet" id="sheet-tracks" hidden aria-label="Els meus tracks">
     <header><h2>Els meus tracks</h2><button class="icon-btn close-sheet" aria-label="Tancar"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></button></header>
+    <div class="seg" role="tablist">
+      <button role="tab" id="tab-btn-tracks" aria-selected="true">Tracks</button>
+      <button role="tab" id="tab-btn-points" aria-selected="false">★ Punts<span id="tab-points-count"></span></button>
+    </div>
+
+    <div id="tab-points" hidden>
+      <ul id="point-list" class="track-list"></ul>
+      <p class="fine" id="point-empty">Encara no tens cap punt. Mantén el dit premut sobre el mapa i toca <b>Guardar punt</b>, o toca el punt blau i <b>Guardar la meva ubicació</b>.</p>
+      <button class="btn btn-storage" id="points-export">
+        <svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 20h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Exportar els punts (GPX)
+      </button>
+      <p class="fine">Els punts només es guarden en aquest mòbil. Exporta'ls de tant en tant per tenir-ne una còpia (per WhatsApp, correu o Drive).</p>
+    </div>
+
+    <div id="tab-tracks">
     <label class="btn btn-primary btn-file">
       <svg viewBox="0 0 24 24"><path d="M12 19V8m0 0-4.5 4.5M12 8l4.5 4.5M5 4h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
       Afegir track (GPX o KML)
@@ -92,6 +108,7 @@
       <svg viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7.5" ry="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M4.5 6v12c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3V6M4.5 12c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3" fill="none" stroke="currentColor" stroke-width="2"/></svg>
       Espai ocupat i mapes guardats
     </button>
+    </div>
   </section>
 
   <!-- Panell: track acabat d'afegir -->

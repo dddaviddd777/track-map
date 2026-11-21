@@ -14,6 +14,7 @@ App per seguir tracks de Wikiloc (GPX/KML) sobre mapes de l'ICGC, al mòbil Andr
 - **Perfil d'altitud**: toca'l o arrossega-hi el dit per veure aquell punt al mapa.
 - **Plegar la barra del track**: toca el nom del track (o la fletxa) per deixar només una línia amb el que falta i veure més mapa.
 - **Google Maps**: mantén el dit premut sobre un punt del mapa per obrir-lo a Google Maps o demanar com arribar-hi (et porta a la carretera o pista més propera).
+- **Punts guardats**: mantén premut el mapa ➜ *Guardar punt* (o toca el punt blau ➜ *Guardar la meva ubicació*). Surt una estrella groga; toca-la per veure les coordenades i escriure una nota. Tots els punts són a *Els meus tracks* ➜ *Punts*, on també els pots exportar en GPX com a còpia de seguretat.
 - **Compartir la meva ubicació**: toca el punt blau per enviar on ets per WhatsApp, SMS, etc.
 - **Pantalla encesa**: botó del sol. Evita que la pantalla s'apagui mentre camines.
 - **Sense cobertura**: en afegir un track, l'app pregunta si vols guardar *només el track* o *el track amb mapes*. També pots descarregar els mapes després amb la fletxa avall. A la llista, cada track indica *Offline* (amb el que ocupa) o *Sense mapes*. Descarrega-ho **a casa, amb wifi**; el GPS funciona sense dades mòbils.
