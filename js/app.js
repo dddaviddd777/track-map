@@ -1,6 +1,6 @@
 import { getAllTracks, getTrack, saveTrack, deleteTrack } from './db.js';
 import { parseTrackFile } from './gpx.js';
-import { analyse, locateOnTrack, bearing, fmtDist, fmtEle, fmtInt, fmtBytes } from './geo.js';
+import { analyse, locateOnTrack, bearing, haversine, fmtDist, fmtEle, fmtInt, fmtBytes } from './geo.js';
 import { LAYERS, DEFAULT_LAYER, COVERAGE, layerById, makeTileLayer } from './layers.js';
 import { planForTrack, planForBounds, estimate, download, storageInfo, requestPersistence, clearTiles } from './offline.js';
 
@@ -409,11 +409,92 @@ function ensureMeMarker(ll) {
   if (meMarker) return;
   accCircle = L.circle(ll, { radius: 10, color: '#1a73e8', weight: 1, opacity: 0.4, fillOpacity: 0.12, interactive: false }).addTo(map);
   meMarker = L.marker(ll, {
-    interactive: false,
     zIndexOffset: 1000,
+    keyboard: false,
     icon: L.divIcon({ className: 'me-icon', iconSize: [64, 64], html: '<div class="me-cone"></div><div class="me-dot"></div>' }),
   }).addTo(map);
+  // Tocar el punt blau: finestra amb la meva ubicació i l'opció de compartir-la
+  meMarker.on('click', e => {
+    L.DomEvent.stopPropagation(e);
+    if (state.pos) openPointPopup(L.latLng(state.pos.lat, state.pos.lon), { mine: true });
+  });
 }
+
+// ---------------------------------------------------------------- Finestra d'un punt (Google Maps / compartir)
+
+let pointPin = null;
+const coordText = ll => `${ll.lat.toFixed(5)}, ${ll.lng.toFixed(5)}`;
+const gmapsSearch = ll => `https://www.google.com/maps/search/?api=1&query=${ll.lat.toFixed(6)},${ll.lng.toFixed(6)}`;
+const gmapsDirections = ll => `https://www.google.com/maps/dir/?api=1&destination=${ll.lat.toFixed(6)},${ll.lng.toFixed(6)}&travelmode=driving`;
+
+const ICONS = {
+  route: '<svg viewBox="0 0 24 24"><path d="M12 2 3 21l9-5 9 5-9-19Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>',
+  map: '<svg viewBox="0 0 24 24"><path d="M12 22s7-6.2 7-12a7 7 0 0 0-14 0c0 5.8 7 12 7 12Z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="10" r="2.6" fill="currentColor"/></svg>',
+  copy: '<svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
+  share: '<svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="6" cy="12" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="19" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><path d="m8.3 10.8 7.4-4.4M8.3 13.2l7.4 4.4" stroke="currentColor" stroke-width="2"/></svg>',
+};
+
+function popupButton(icon, label, onClick, primary = false) {
+  const b = document.createElement(onClick.href ? 'a' : 'button');
+  b.className = 'pp-btn' + (primary ? ' pp-primary' : '');
+  b.innerHTML = ICONS[icon] + '<span></span>';
+  b.querySelector('span').textContent = label;
+  if (onClick.href) { b.href = onClick.href; b.target = '_blank'; b.rel = 'noopener'; }
+  else b.onclick = onClick;
+  return b;
+}
+
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); toast('Coordenades copiades'); }
+  catch { toast(text, 8000); }
+}
+
+async function shareMyLocation(ll) {
+  const acc = state.pos?.acc ? ` (precisió ±${Math.round(state.pos.acc)} m)` : '';
+  const text = `Sóc aquí: ${coordText(ll)}${acc}`;
+  const url = gmapsSearch(ll);
+  if (navigator.share) {
+    try { await navigator.share({ title: 'La meva ubicació', text, url }); return; }
+    catch (e) { if (e.name === 'AbortError') return; }
+  }
+  copyText(`${text}\n${url}`);
+}
+
+function openPointPopup(ll, { mine = false } = {}) {
+  map.closePopup();
+  const box = document.createElement('div');
+  box.className = 'pp';
+  const title = document.createElement('b');
+  title.textContent = mine ? 'La meva ubicació' : 'Punt seleccionat';
+  const info = document.createElement('small');
+  let infoText = coordText(ll);
+  if (mine && state.pos?.acc) infoText += ` · ±${Math.round(state.pos.acc)} m`;
+  if (!mine && state.pos) infoText += ` · a ${fmtDist(haversine(state.pos.lat, state.pos.lon, ll.lat, ll.lng))} de tu`;
+  info.textContent = infoText;
+  box.append(title, info);
+
+  if (mine) box.append(popupButton('share', 'Compartir la meva ubicació', () => shareMyLocation(ll), true));
+  box.append(
+    popupButton('route', 'Com arribar-hi', { href: gmapsDirections(ll) }, !mine),
+    popupButton('map', 'Veure a Google Maps', { href: gmapsSearch(ll) }),
+    popupButton('copy', 'Copiar coordenades', () => copyText(coordText(ll))),
+  );
+
+  if (!mine) {
+    pointPin ??= L.marker(ll, { interactive: false, icon: L.divIcon({ className: 'point-pin', iconSize: [26, 34], iconAnchor: [13, 34], html: ICONS.map }) });
+    pointPin.setLatLng(ll).addTo(map);
+  }
+  const popup = L.popup({ className: 'point-popup', offset: mine ? [0, -6] : [0, -30], maxWidth: 260, minWidth: 220, autoPanPaddingBottomRight: [20, 20 + (parseInt(getComputedStyle(document.documentElement).getPropertyValue('--tb-h')) || 0)] })
+    .setLatLng(ll).setContent(box).openOn(map);
+  popup.on('remove', () => { if (!mine) pointPin?.remove(); });
+}
+
+// Mantenir premut un punt del mapa (al mòbil) o clic dret (a l'ordinador)
+map.on('contextmenu', e => {
+  if (navigator.vibrate) navigator.vibrate(25);
+  setFollow(false);
+  openPointPopup(e.latlng);
+});
 
 function startGeo() {
   if (state.watchId != null) return;

@@ -86,7 +86,8 @@ export function locateOnTrack(points, cum, lat, lon, lastAlong) {
   const near = cands.filter(c => c.d <= best + 30);
   let pick = near[0];
   for (const c of near) {
-    if (lastAlong == null) { if (c.d < pick.d) pick = c; }
+    // Sense progrés previ: el tram més proper; en cas d'empat (bucles) el més proper a l'inici
+    if (lastAlong == null) { if (c.d < pick.d - 2) pick = c; }
     else if (Math.abs(c.along - lastAlong) < Math.abs(pick.along - lastAlong)) pick = c;
   }
   return pick || { i: 0, t: 0, d: Infinity, along: 0 };
