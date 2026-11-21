@@ -72,7 +72,13 @@
     <label class="btn btn-primary btn-file">
       <svg viewBox="0 0 24 24"><path d="M12 19V8m0 0-4.5 4.5M12 8l4.5 4.5M5 4h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
       Afegir track (GPX o KML)
-      <input type="file" id="file-input" multiple hidden>
+      <!-- Amb tipus que no són imatges, Android obre l'explorador de fitxers (amb Descàrregues) i no la galeria -->
+      <input type="file" id="file-input" multiple hidden
+        accept=".gpx,.kml,.xml,application/gpx+xml,application/vnd.google-earth.kml+xml,application/xml,text/xml,application/octet-stream">
+    </label>
+    <label class="link-file">
+      No veus el fitxer? Mostra tots els fitxers
+      <input type="file" id="file-input-any" multiple hidden>
     </label>
     <ul id="track-list" class="track-list"></ul>
     <p class="fine" id="track-empty">Encara no tens cap track. Descarrega'l de Wikiloc en format GPX i afegeix-lo aquí.</p>
@@ -117,6 +123,14 @@
     <p class="fine" id="storage-info"></p>
     <button class="btn btn-danger-text" id="dl-clear">Esborrar tots els mapes descarregats</button>
   </section>
+
+  <!-- Proposta d'instal·lar l'app (només si el navegador ho permet i encara no està instal·lada) -->
+  <div id="install-banner" hidden>
+    <img src="icons/icon-192.png" alt="" width="40" height="40">
+    <div class="ib-text"><b>Instal·la Track Map</b><small>Accés ràpid i sense connexió</small></div>
+    <button class="btn btn-primary" id="install-btn">Instal·lar</button>
+    <button class="icon-btn" id="install-close" aria-label="Ara no"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></button>
+  </div>
 
   <div id="toast" role="status" aria-live="polite" hidden></div>
 

@@ -9,6 +9,20 @@
   "orientation": "portrait",
   "background_color": "#1f6f4a",
   "theme_color": "#1f6f4a",
+  "id": "./",
+  "share_target": {
+    "action": "./compartir",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "files": [
+        {
+          "name": "fitxers",
+          "accept": [".gpx", ".kml", "application/gpx+xml", "application/vnd.google-earth.kml+xml", "application/xml", "text/xml", "application/octet-stream"]
+        }
+      ]
+    }
+  },
   "icons": [
     { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },

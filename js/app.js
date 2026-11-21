@@ -117,9 +117,15 @@ $('#btn-download').onclick = () => openDownload(state.track ? 'track' : 'area');
 
 // ---------------------------------------------------------------- Tracks
 
-$('#file-input').onchange = async e => {
-  const files = [...e.target.files];
-  e.target.value = '';
+for (const sel of ['#file-input', '#file-input-any']) {
+  $(sel).onchange = e => {
+    const files = [...e.target.files];
+    e.target.value = '';
+    importFiles(files);
+  };
+}
+
+async function importFiles(files) {
   let last = null;
   for (const f of files) {
     try {
@@ -146,7 +152,30 @@ $('#file-input').onchange = async e => {
     await activateTrack(last.id);
     toast(files.length > 1 ? `${files.length} tracks afegits` : 'Track afegit');
   }
-};
+}
+
+// Fitxers rebuts des del menú «Compartir» d'Android (WhatsApp, Descàrregues, correu…).
+// El service worker els guarda i obre l'app amb ?compartit=1.
+async function importSharedFiles() {
+  const params = new URLSearchParams(location.search);
+  if (!params.has('compartit')) return;
+  history.replaceState(null, '', location.pathname);
+  try {
+    const cache = await caches.open('shared-files');
+    const reqs = await cache.keys();
+    const files = [];
+    for (const req of reqs) {
+      const res = await cache.match(req);
+      const name = decodeURIComponent(res.headers.get('X-File-Name') || 'track.gpx');
+      files.push(new File([await res.blob()], name));
+      await cache.delete(req);
+    }
+    if (files.length) await importFiles(files);
+    else toast('No s\'ha rebut cap fitxer');
+  } catch {
+    toast('No s\'ha pogut obrir el fitxer compartit', 5000);
+  }
+}
 
 async function renderTrackList() {
   const tracks = (await getAllTracks()).sort((a, b) => b.added - a.added);
@@ -740,6 +769,34 @@ $('#dl-clear').onclick = async () => {
   refreshStorage();
 };
 
+// ---------------------------------------------------------------- Instal·lar l'app
+
+let installEvent = null;
+const isInstalled = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();          // fem servir el nostre bàner en lloc del de Chrome
+  installEvent = e;
+  const snoozed = store.get('installSnooze', 0);
+  if (!isInstalled() && Date.now() > snoozed) $('#install-banner').hidden = false;
+});
+$('#install-btn').onclick = async () => {
+  $('#install-banner').hidden = true;
+  if (!installEvent) return;
+  installEvent.prompt();
+  const { outcome } = await installEvent.userChoice;
+  if (outcome !== 'accepted') store.set('installSnooze', Date.now() + 7 * 864e5);
+  installEvent = null;
+};
+$('#install-close').onclick = () => {
+  $('#install-banner').hidden = true;
+  store.set('installSnooze', Date.now() + 7 * 864e5);   // no tornar-ho a proposar en una setmana
+};
+window.addEventListener('appinstalled', () => {
+  $('#install-banner').hidden = true;
+  toast('App instal·lada! Ja la tens a la pantalla d\'inici.');
+});
+
 // ---------------------------------------------------------------- Inici
 
 async function init() {
@@ -751,6 +808,7 @@ async function init() {
     try { await activateTrack(active, !startView); } catch { /* track esborrat */ }
   }
   applyProfileVisibility();
+  await importSharedFiles();
 
   // Si ja tenim permís d'ubicació, comencem a seguir la posició de seguida.
   try {

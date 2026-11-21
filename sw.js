@@ -1,6 +1,6 @@
 // Service worker: fa que l'app i els mapes funcionin sense connexió.
 // Quan canviïs fitxers de l'app, puja el número de versió perquè els mòbils s'actualitzin.
-const APP_CACHE = 'app-v4';
+const APP_CACHE = 'app-v5';
 const TILE_CACHE = 'tiles-v1';
 const TILE_HOSTS = ['geoserveis.icgc.cat'];
 
@@ -39,8 +39,14 @@ self.addEventListener('activate', event => {
 
 self.addEventListener('fetch', event => {
   const req = event.request;
-  if (req.method !== 'GET') return;
   const url = new URL(req.url);
+
+  // Fitxers compartits des d'altres apps (WhatsApp, Descàrregues…): vegeu share_target al manifest
+  if (req.method === 'POST' && url.origin === self.location.origin && url.pathname.endsWith('/compartir')) {
+    event.respondWith(receiveShared(req));
+    return;
+  }
+  if (req.method !== 'GET') return;
 
   if (TILE_HOSTS.includes(url.hostname)) {
     event.respondWith(tile(req));
@@ -48,6 +54,21 @@ self.addEventListener('fetch', event => {
     event.respondWith(appFile(req, event));
   }
 });
+
+async function receiveShared(req) {
+  try {
+    const form = await req.formData();
+    const cache = await caches.open('shared-files');
+    let i = 0;
+    for (const file of form.getAll('fitxers')) {
+      if (!(file instanceof File)) continue;
+      await cache.put(`./compartit/${Date.now()}-${i++}`, new Response(file, {
+        headers: { 'X-File-Name': encodeURIComponent(file.name || 'track.gpx') },
+      }));
+    }
+  } catch { /* l'app avisarà que no ha rebut res */ }
+  return Response.redirect('./?compartit=1', 303);
+}
 
 // Mapes: primer el que hi ha guardat; si no, internet (i es guarda per a la propera vegada).
 async function tile(req) {
