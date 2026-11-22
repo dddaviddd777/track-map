@@ -243,6 +243,9 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 16px 0 4px; }
 #gps-status.gps-bad span { color: var(--danger); }
 #gps-status.gps-wait i { animation: pulse 1.2s infinite; }
 #gps-status.gps-wait span { color: var(--ink-2); }
+#gps-status em { font-style: normal; color: var(--ink-2); padding-left: 7px; border-left: 1px solid var(--line); }
+.pp small.pp-alt { margin-top: -2px; }
+.pp small.pp-alt.ready { color: var(--ink); font-weight: 600; }
 
 /* Punts guardats */
 .saved-point { color: #f2a900; }

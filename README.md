@@ -9,11 +9,12 @@ App per seguir tracks de Wikiloc (GPX/KML) sobre mapes de l'ICGC, al mòbil Andr
 - **Mapes**: topogràfic de l'ICGC (corriols i corbes de nivell), satèlit (ortofoto) i un topogràfic lleuger.
 - **Noms al satèlit**: amb el satèlit posat, el botó *Aa* mostra o amaga els noms de pobles, cims, masies i camins. Per tenir-los sense cobertura, descarrega també «Satèlit amb noms» (ocupa unes 5 vegades més).
 - **La teva posició**: botó gran de baix. Un toc et centra i et segueix; si mous el mapa, deixa de seguir-te.
-- **Estat del GPS**: a dalt a l'esquerra, un punt verd (bo, ±15 m o menys), groc (acceptable) o vermell (feble) amb la precisió. Toca'l per veure'n el detall.
+- **Estat del GPS**: a dalt a l'esquerra, un punt verd (bo, ±15 m o menys), groc (acceptable) o vermell (feble) amb la precisió i, al costat, l'altitud on ets. Toca'l per veure'n el detall.
 - **Orientació del mapa**: el botó de la brúixola (a sobre del de posició) fa girar el mapa segons cap on apunta el mòbil. Torna-hi a tocar per posar el nord a dalt.
 - **Seguiment**: a la barra de baix veus els km fets i els que falten, la pujada i la baixada que queden, i un avís si t'allunyes més de 40 m del track.
 - **Perfil d'altitud**: toca'l o arrossega-hi el dit per veure aquell punt al mapa.
 - **Plegar la barra del track**: toca el nom del track (o la fletxa) per deixar només una línia amb el que falta i veure més mapa.
+- **Altitud**: mantén premut un punt del mapa per veure'n l'altitud i quants metres és més amunt o més avall d'on ets. A Catalunya es fa servir el model del terreny de l'ICGC (molt precís, cal connexió); a la resta, o sense cobertura, un model de relleu mundial (uns 10-20 m de marge) que es descarrega amb els mapes. Els tracks que no porten altitud la calculen sols, i les estrelles la guarden.
 - **Google Maps**: mantén el dit premut sobre un punt del mapa per obrir-lo a Google Maps o demanar com arribar-hi (et porta a la carretera o pista més propera).
 - **Punts guardats**: mantén premut el mapa ➜ *Guardar punt* (o toca el punt blau ➜ *Guardar la meva ubicació*). Surt una estrella groga; toca-la per veure les coordenades i escriure una nota. Tots els punts són a *Els meus tracks* ➜ *Punts*, on també els pots exportar en GPX com a còpia de seguretat.
 - **Compartir la meva ubicació**: toca el punt blau per enviar on ets per WhatsApp, SMS, etc.

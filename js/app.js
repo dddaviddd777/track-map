@@ -1,7 +1,8 @@
 import { getAllTracks, getTrack, saveTrack, deleteTrack, getAllPoints, savePoint, deletePoint } from './db.js';
 import { parseTrackFile } from './gpx.js';
 import { analyse, locateOnTrack, bearing, haversine, fmtDist, fmtEle, fmtInt, fmtBytes } from './geo.js';
-import { LAYERS, DEFAULT_LAYER, COVERAGE, layerById, makeTileLayer } from './layers.js';
+import { LAYERS, DEFAULT_LAYER, COVERAGE, TERRAIN_LAYER, layerById, makeTileLayer } from './layers.js';
+import { elevationAt, elevationsFor } from './elevation.js';
 import { planForTrack, planForBounds, estimate, download, storageInfo, requestPersistence, clearTiles,
   urlsForTrack, urlsForArea, cachedTileSizes, deleteTiles } from './offline.js';
 
@@ -261,6 +262,33 @@ async function activateTrack(id, fit = true) {
   $('#tb-name').textContent = rec.name;
   updateTrackbar();
   applyProfileVisibility();
+  if (!info.hasEle) fillTrackElevation(rec);
+}
+
+// Tracks sense altitud (molts de Wikiloc o KML): la calculem a partir del relleu i la guardem
+const eleFilling = new Set();
+async function fillTrackElevation(rec) {
+  if (eleFilling.has(rec.id)) return;
+  eleFilling.add(rec.id);
+  try {
+    const eles = await elevationsFor(rec.points);
+    const ok = eles.filter(v => v != null).length;
+    if (ok < rec.points.length * 0.9) return;   // sense connexió ni relleu guardat: ho tornarem a provar
+    rec.points = rec.points.map((p, i) => [p[0], p[1], eles[i] ?? p[2] ?? null, ...p.slice(3)]);
+    rec.eleFromTerrain = true;
+    const info = analyse(rec.points);
+    rec.stats = { distance: info.distance, gain: info.gain, loss: info.loss, minEle: info.minEle, maxEle: info.maxEle };
+    await saveTrack(rec);
+    if (state.track?.rec.id === rec.id) {
+      state.track = { rec, info };
+      updateTrackbar();
+      applyProfileVisibility();
+      toast('Altitud del track calculada a partir del relleu', 3000);
+    }
+    if (!$('#sheet-tracks').hidden) renderTrackList();
+  } finally {
+    eleFilling.delete(rec.id);
+  }
 }
 
 function deactivateTrack() {
@@ -558,13 +586,29 @@ function openPointPopup(ll, { mine = false } = {}) {
   if (mine && state.pos?.acc) infoText += ` · ±${Math.round(state.pos.acc)} m`;
   if (!mine && state.pos) infoText += ` · a ${fmtDist(haversine(state.pos.lat, state.pos.lon, ll.lat, ll.lng))} de tu`;
   info.textContent = infoText;
-  box.append(title, info);
+  // Altitud del punt (i quant més amunt o avall és respecte d'on ets)
+  const alt = document.createElement('small');
+  alt.className = 'pp-alt';
+  alt.textContent = 'Altitud: calculant…';
+  const eleP = elevationAt(ll.lat, ll.lng).then(r => {
+    if (!r) { alt.textContent = 'Altitud: cal connexió (o descarregar els mapes d\'aquesta zona)'; return null; }
+    let txt = `Altitud ${fmtEle(r.ele)}`;
+    const me = state.myEle?.ele;
+    if (!mine && me != null && state.pos) {
+      const d = Math.round(r.ele - me);
+      txt += Math.abs(d) < 5 ? ' · a la teva altitud' : ` · ${fmtEle(Math.abs(d))} més ${d > 0 ? 'amunt' : 'avall'} que tu`;
+    }
+    alt.textContent = txt;
+    alt.classList.add('ready');
+    return r.ele;
+  });
+  box.append(title, info, alt);
 
   if (mine) {
     box.append(popupButton('share', 'Compartir la meva ubicació', () => shareMyLocation(ll), true));
-    box.append(popupButton('star', 'Guardar la meva ubicació', () => saveNewPoint(ll, state.pos?.alt), false, 'pp-star'));
+    box.append(popupButton('star', 'Guardar la meva ubicació', () => saveNewPoint(ll, eleP), false, 'pp-star'));
   } else {
-    box.append(popupButton('star', 'Guardar punt', () => saveNewPoint(ll), true, 'pp-star'));
+    box.append(popupButton('star', 'Guardar punt', () => saveNewPoint(ll, eleP), true, 'pp-star'));
   }
   box.append(
     popupButton('route', 'Com arribar-hi', { href: gmapsDirections(ll) }),
@@ -605,7 +649,10 @@ async function loadPoints() {
   for (const p of await getAllPoints()) addPointMarker(p);
 }
 
-async function saveNewPoint(ll, ele = null) {
+// L'altitud pot arribar com a promesa (s'està calculant): l'esperem una mica, si no es completa després
+async function saveNewPoint(ll, eleSrc = null) {
+  const late = Promise.resolve(eleSrc).catch(() => null);
+  const ele = await Promise.race([late, new Promise(r => setTimeout(() => r(null), 1500))]);
   const p = {
     id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()),
     lat: +ll.lat.toFixed(6),
@@ -619,6 +666,23 @@ async function saveNewPoint(ll, ele = null) {
   if (navigator.vibrate) navigator.vibrate([20, 40, 20]);
   openSavedPoint(p, true);
   toast('Punt guardat ★', 1800);
+  if (p.ele == null) fillPointElevation(p, late);
+}
+
+// Punts sense altitud (guardats sense connexió o amb versions anteriors): la busquem quan es pugui
+async function fillPointElevation(p, eleP = null) {
+  const ele = (await eleP) ?? (await elevationAt(p.lat, p.lon))?.ele;
+  if (ele == null || p.ele != null) return;
+  p.ele = Math.round(ele);
+  await savePoint(p);
+  const info = document.querySelector(`.pp[data-point="${p.id}"] small`);
+  if (info) info.textContent = savedPointInfo(p);
+}
+
+function savedPointInfo(p) {
+  let t = coordText(pointLL(p)) + (p.ele != null ? ` · ${fmtEle(p.ele)}` : '');
+  if (state.pos) t += ` · a ${fmtDist(haversine(state.pos.lat, state.pos.lon, p.lat, p.lon))} de tu`;
+  return t;
 }
 
 function openSavedPoint(p, focusNote = false) {
@@ -626,12 +690,12 @@ function openSavedPoint(p, focusNote = false) {
   const ll = pointLL(p);
   const box = document.createElement('div');
   box.className = 'pp';
+  box.dataset.point = p.id;
   const title = document.createElement('b');
   title.textContent = `★ ${fmtWhen(p.created)}`;
   const info = document.createElement('small');
-  let infoText = coordText(ll) + (p.ele != null ? ` · ${fmtEle(p.ele)}` : '');
-  if (state.pos) infoText += ` · a ${fmtDist(haversine(state.pos.lat, state.pos.lon, p.lat, p.lon))} de tu`;
-  info.textContent = infoText;
+  info.textContent = savedPointInfo(p);
+  if (p.ele == null && !focusNote) fillPointElevation(p);
 
   // Nota: es guarda sola mentre escrius
   const note = document.createElement('textarea');
@@ -769,7 +833,8 @@ function gpsLevel() {
   const age = Date.now() - (state.lastFix || 0);
   if (age > GPS_STALE_MS) return { cls: 'wait', text: 'Sense senyal', detail: `Fa ${Math.round(age / 1000)} s que no arriba cap posició nova. La del mapa és l'última coneguda.` };
   const acc = Math.round(state.pos.acc);
-  const extra = (state.pos.alt != null ? ` · altitud ${fmtEle(state.pos.alt)}` : '') + ` · actualitzat fa ${Math.max(0, Math.round(age / 1000))} s`;
+  const extra = (state.myEle ? ` · altitud ${fmtEle(state.myEle.ele)} (${state.myEle.src === 'icgc' ? 'model del terreny de l\'ICGC' : 'model del relleu'})` : '')
+    + ` · actualitzat fa ${Math.max(0, Math.round(age / 1000))} s`;
   if (acc <= 15) return { cls: 'good', text: `±${acc} m`, detail: `Senyal GPS bo: precisió ±${acc} m${extra}` };
   if (acc <= 50) return { cls: 'fair', text: `±${acc} m`, detail: `Senyal GPS acceptable: precisió ±${acc} m${extra}` };
   return { cls: 'bad', text: `±${acc} m`, detail: `Senyal GPS feble: precisió ±${acc} m${extra}. Pot millorar en un lloc més obert.` };
@@ -782,6 +847,10 @@ function updateGpsStatus() {
   el.hidden = false;
   el.className = `gps-${lvl.cls}`;
   el.querySelector('span').textContent = lvl.text;
+  // La teva altitud (del terreny on ets), només si la posició és recent
+  const showAlt = state.myEle && (lvl.cls === 'good' || lvl.cls === 'fair' || lvl.cls === 'bad') && state.gpsStatus === 'ok';
+  el.querySelector('em').hidden = !showAlt;
+  if (showAlt) el.querySelector('em').textContent = fmtEle(state.myEle.ele);
   el.title = lvl.detail;
   el.setAttribute('aria-label', lvl.detail);
 }
@@ -814,12 +883,29 @@ function onPosition(pos) {
   meMarker.setLatLng(ll);
   accCircle.setLatLng(ll).setRadius(c.accuracy);
   updateHeading();
+  updateMyElevation();
   if (state.follow) map.setView(ll, first ? Math.max(map.getZoom(), 16) : map.getZoom(), { animate: true });
   $('#btn-locate').dataset.state = state.follow ? 'follow' : 'located';
   if (state.track) {
     const prev = state.progress && state.progress.d <= FAR_M ? state.progress.along : null;
     state.progress = locateOnTrack(state.track.rec.points, state.track.info.cum, c.latitude, c.longitude, prev);
     updateTrackbar();
+  }
+}
+
+// Altitud del terreny on ets (més fiable que la del GPS). Es recalcula quan t'has mogut uns metres.
+let myEleBusy = false;
+async function updateMyElevation() {
+  const p = state.pos;
+  if (!p || myEleBusy || p.acc > 150) return;
+  const m = state.myEle;
+  if (m && haversine(m.lat, m.lon, p.lat, p.lon) < 15 && Date.now() - m.at < 120000) return;
+  myEleBusy = true;
+  try {
+    const r = await elevationAt(p.lat, p.lon);
+    if (r) { state.myEle = { ele: r.ele, src: r.src, lat: p.lat, lon: p.lon, at: Date.now() }; updateGpsStatus(); }
+  } finally {
+    myEleBusy = false;
   }
 }
 
@@ -985,7 +1071,7 @@ function renderDlLayers() {
   const box = $('#dl-layers');
   if (box.childElementCount) return;
   const chosen = store.get('dlLayers', state.labels ? ['topo', 'orto', 'orto-noms'] : ['topo', 'orto']);
-  for (const def of LAYERS) {
+  for (const def of LAYERS.filter(l => !l.terrain)) {
     const l = document.createElement('label');
     l.className = 'check';
     l.innerHTML = `<input type="checkbox" value="${def.id}"><span></span>`;
@@ -1008,6 +1094,7 @@ const MAX_AREA_TILES = 15000;
 
 function currentPlan() {
   const defs = [...document.querySelectorAll('#dl-layers input:checked')].map(i => layerById(i.value));
+  if (defs.length) defs.push(TERRAIN_LAYER);   // el relleu sempre, per saber l'altitud sense cobertura
   const maxZoom = Number($('#dl-maxzoom').value);
   if (state.dlMode === 'track' && state.track) {
     return planForTrack(defs, state.track.rec.points, Number($('#dl-buffer').value), maxZoom);

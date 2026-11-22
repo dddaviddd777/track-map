@@ -1,8 +1,8 @@
 // Service worker: fa que l'app i els mapes funcionin sense connexió.
 // Quan canviïs fitxers de l'app, puja el número de versió perquè els mòbils s'actualitzin.
-const APP_CACHE = 'app-v9';
+const APP_CACHE = 'app-v10';
 const TILE_CACHE = 'tiles-v1';
-const TILE_HOSTS = ['geoserveis.icgc.cat'];
+const TILE_HOSTS = ['geoserveis.icgc.cat', 's3.amazonaws.com'];
 
 const APP_FILES = [
   './',
@@ -11,6 +11,7 @@ const APP_FILES = [
   './css/app.css',
   './js/app.js',
   './js/db.js',
+  './js/elevation.js',
   './js/geo.js',
   './js/gpx.js',
   './js/layers.js',
@@ -49,7 +50,8 @@ self.addEventListener('fetch', event => {
   }
   if (req.method !== 'GET') return;
 
-  if (TILE_HOSTS.includes(url.hostname)) {
+  // L'altitud de l'ICGC (icc_mdt) sempre es demana a internet; no és un mapa per guardar
+  if (TILE_HOSTS.includes(url.hostname) && !url.pathname.startsWith('/icc_mdt/')) {
     event.respondWith(tile(req));
   } else if (url.origin === self.location.origin) {
     event.respondWith(appFile(req, event));

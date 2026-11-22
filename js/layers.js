@@ -50,6 +50,19 @@ export const LAYERS = [
     avgKB: 18,
     thumb: 'https://geoserveis.icgc.cat/icc_mapesmultibase/noutm/wmts/topo/GRID3857/15/16551/12218.jpeg',
   },
+  {
+    // Relleu (altitud) per saber l'altitud sense cobertura. No es veu al mapa:
+    // es descarrega sempre amb els mapes d'un track o d'una zona.
+    id: 'relleu',
+    name: 'Altitud (relleu)',
+    url: 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png',
+    tileSize: 256,
+    zoomOffset: 0,
+    maxNativeZoom: 13,
+    avgKB: 125,
+    inPicker: false,
+    terrain: true,
+  },
 ];
 
 export const DEFAULT_LAYER = 'topo';
@@ -60,6 +73,7 @@ export const COVERAGE = [[40.3, -0.3], [43.0, 3.5]];
 export function layerById(id) {
   return LAYERS.find(l => l.id === id) || LAYERS[0];
 }
+export const TERRAIN_LAYER = layerById('relleu');
 
 export function makeTileLayer(def) {
   return L.tileLayer(def.url, {
