@@ -334,3 +334,26 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 16px 0 4px; }
   z-index: 3000; background: #202124; color: #fff; padding: 10px 16px; border-radius: 10px;
   font-size: 14px; max-width: calc(100vw - 32px); box-shadow: var(--shadow);
 }
+
+/* Mesurar distàncies */
+#measure-cross {
+  position: fixed; left: 50%; top: 50%; width: 34px; height: 34px; margin: -17px 0 0 -17px;
+  z-index: 900; pointer-events: none;
+}
+#measure-cross::before, #measure-cross::after {
+  content: ''; position: absolute; background: #d93025; box-shadow: 0 0 0 1.5px #fff;
+}
+#measure-cross::before { left: 16px; top: 0; width: 2px; height: 34px; }
+#measure-cross::after { top: 16px; left: 0; height: 2px; width: 34px; }
+#measure-bar {
+  position: fixed; left: 12px; right: 76px; bottom: calc(24px + var(--tb-h, 0px) + var(--safe-b)); z-index: 1100;
+  background: var(--bg); border-radius: 14px; box-shadow: 0 2px 10px rgba(0,0,0,.25); padding: 10px 12px;
+}
+.mb-info { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 10px; }
+#mb-dist { font-size: 20px; font-variant-numeric: tabular-nums; }
+#mb-ele { font-weight: 600; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+#mb-hint { flex-basis: 100%; color: var(--ink-2); font-size: 12px; margin-top: 2px; }
+.mb-actions { display: flex; gap: 6px; margin-top: 8px; }
+.mb-actions .btn { flex: 1; }
+.measure-vertex { background: #fff; border: 2.5px solid #d93025; border-radius: 50%; box-sizing: border-box; }
+.measure-vertex.start { background: #d93025; border-color: #fff; }

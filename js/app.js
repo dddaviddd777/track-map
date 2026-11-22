@@ -588,6 +588,7 @@ const ICONS = {
   copy: '<svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
   share: '<svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="6" cy="12" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="19" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><path d="m8.3 10.8 7.4-4.4M8.3 13.2l7.4 4.4" stroke="currentColor" stroke-width="2"/></svg>',
   star: '<svg viewBox="0 0 24 24"><path d="m12 2.8 2.8 5.8 6.3.9-4.6 4.4 1.1 6.3L12 17.2l-5.6 3 1.1-6.3-4.6-4.4 6.3-.9Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>',
+  ruler: '<svg viewBox="0 0 24 24"><path d="m3.5 16.5 13-13 4 4-13 13Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="m7.5 12.5 2 2m1-5 2 2m1-5 2 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
   trash: '<svg viewBox="0 0 24 24"><path d="M5 7h14M10 7V4.5h4V7m-7.5 0 1 13h9l1-13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
 };
 
@@ -653,6 +654,7 @@ function openPointPopup(ll, { mine = false } = {}) {
     box.append(popupButton('star', 'Guardar punt', () => saveNewPoint(ll, eleP), true, 'pp-star'));
   }
   box.append(
+    popupButton('ruler', 'Mesurar distància', () => startMeasure(ll)),
     popupButton('route', 'Com arribar-hi', { href: gmapsDirections(ll) }),
     popupButton('map', 'Veure a Google Maps', { href: gmapsSearch(ll) }),
     popupButton('copy', 'Copiar coordenades', () => copyText(coordText(ll))),
@@ -860,10 +862,112 @@ $('#tab-btn-points').onclick = () => showListTab('points');
 
 // Mantenir premut un punt del mapa (al mòbil) o clic dret (a l'ordinador)
 map.on('contextmenu', e => {
+  if (measure) return;   // mentre mesures, el dit premut no obre la finestra
   if (navigator.vibrate) navigator.vibrate(25);
   setFollow(false);
   openPointPopup(e.latlng);
 });
+
+// ---------------------------------------------------------------- Mesurar distàncies
+// Des del punt premut surt una línia de punts fins a la creu del centre. Mous el mapa per allargar-la;
+// «+ Punt» fixa un gir i en comença un tram nou. Distància en línia recta i desnivell respecte de l'inici.
+
+let measure = null;   // { pts: [LatLng], layer, line, startEle, eleSeq }
+
+function startMeasure(ll) {
+  if (measure) stopMeasure();
+  map.closePopup();
+  setFollow(false);
+  measure = { pts: [L.latLng(ll.lat, ll.lng)], layer: L.layerGroup().addTo(map), startEle: null, eleSeq: 0 };
+  measure.line = L.polyline([], { color: '#d93025', weight: 3, dashArray: '2 8', lineCap: 'round', interactive: false }).addTo(measure.layer);
+  addMeasureVertex(measure.pts[0], true);
+  document.body.classList.add('measuring');
+  $('#measure-cross').hidden = false;
+  $('#measure-bar').hidden = false;
+  $('#mb-hint').hidden = false;
+  elevationAt(ll.lat, ll.lng).then(r => { if (measure) { measure.startEle = r?.ele ?? null; measureEle(); } });
+  map.stop();   // atura l'autodesplaçament de la finestra que s'acaba de tancar
+  map.setView(ll, map.getZoom(), { animate: false });
+  drawMeasure();
+}
+
+function addMeasureVertex(ll, start = false) {
+  L.marker(ll, {
+    interactive: false, keyboard: false,
+    icon: L.divIcon({ className: 'measure-vertex' + (start ? ' start' : ''), iconSize: start ? [14, 14] : [12, 12] }),
+  }).addTo(measure.layer);
+}
+
+function measureLength(pts) {
+  let d = 0;
+  for (let i = 1; i < pts.length; i++) d += haversine(pts[i - 1].lat, pts[i - 1].lng, pts[i].lat, pts[i].lng);
+  return d;
+}
+
+function drawMeasure() {
+  if (!measure) return;
+  const all = [...measure.pts, map.getCenter()];
+  measure.line.setLatLngs(all);
+  const total = measureLength(all);
+  const leg = measureLength(all.slice(-2));
+  $('#mb-dist').textContent = fmtDist(total);
+  $('#mb-dist').title = 'Distància en línia recta';
+  if (measure.pts.length > 1) $('#mb-dist').textContent += ` (tram ${fmtDist(leg)})`;
+  $('#mb-undo').disabled = measure.pts.length < 2;
+}
+
+// Desnivell entre l'inici i la creu, quan el mapa s'atura
+async function measureEle() {
+  if (!measure) return;
+  const seq = ++measure.eleSeq;
+  const c = map.getCenter();
+  const el = $('#mb-ele');
+  if (measure.startEle == null) { el.textContent = ''; return; }
+  const r = await elevationAt(c.lat, c.lng);
+  if (!measure || seq !== measure.eleSeq) return;   // el mapa s'ha tornat a moure
+  if (!r) { el.textContent = ''; return; }
+  const d = Math.round(r.ele - measure.startEle);
+  el.textContent = `${Math.abs(d) < 3 ? '= mateixa altitud' : `${d > 0 ? '↑' : '↓'} ${fmtEle(Math.abs(d))}`} · alt. ${fmtEle(r.ele)}`;
+  el.title = 'Diferència d\'altitud respecte del punt d\'inici';
+}
+
+function stopMeasure() {
+  if (!measure) return;
+  map.removeLayer(measure.layer);
+  measure = null;
+  document.body.classList.remove('measuring');
+  $('#measure-cross').hidden = true;
+  $('#measure-bar').hidden = true;
+  $('#mb-ele').textContent = '';
+}
+
+map.on('move', drawMeasure);
+map.on('moveend', () => {
+  if (!measure) return;
+  drawMeasure();
+  measureEle();
+});
+map.on('dragstart', () => { if (measure) $('#mb-hint').hidden = true; });
+
+$('#mb-add').onclick = () => {
+  if (!measure) return;
+  const c = map.getCenter();
+  const last = measure.pts[measure.pts.length - 1];
+  if (haversine(last.lat, last.lng, c.lat, c.lng) < 1) { toast('Mou el mapa per marcar un punt nou', 2000); return; }
+  measure.pts.push(c);
+  addMeasureVertex(c);
+  if (navigator.vibrate) navigator.vibrate(15);
+  drawMeasure();
+};
+$('#mb-undo').onclick = () => {
+  if (!measure || measure.pts.length < 2) return;
+  measure.pts.pop();
+  // Tornem a dibuixar els punts fixos
+  measure.layer.eachLayer(l => { if (l instanceof L.Marker) measure.layer.removeLayer(l); });
+  measure.pts.forEach((p, i) => addMeasureVertex(p, i === 0));
+  drawMeasure();
+};
+$('#mb-done').onclick = stopMeasure;
 
 // ---------------------------------------------------------------- Indicador de l'estat del GPS
 

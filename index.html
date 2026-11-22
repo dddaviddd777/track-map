@@ -202,6 +202,17 @@
     <button class="icon-btn" id="install-close" aria-label="Ara no"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></button>
   </div>
 
+  <!-- Mesurar distàncies: mira al centre i barra amb la distància -->
+  <div id="measure-cross" hidden aria-hidden="true"></div>
+  <div id="measure-bar" hidden role="region" aria-label="Mesurar distància">
+    <div class="mb-info"><b id="mb-dist">0 m</b><span id="mb-ele"></span><small id="mb-hint">Mou el mapa: la línia va fins a la creu del centre</small></div>
+    <div class="mb-actions">
+      <button class="btn btn-sm" id="mb-undo" disabled>Desfer</button>
+      <button class="btn btn-sm" id="mb-add">+ Punt</button>
+      <button class="btn btn-sm btn-primary" id="mb-done">Acabar</button>
+    </div>
+  </div>
+
   <div id="toast" role="status" aria-live="polite" hidden></div>
 
   <script src="vendor/leaflet/leaflet.js"></script>
