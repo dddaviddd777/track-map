@@ -289,6 +289,12 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 16px 0 4px; }
 .st-legend i { width: 12px; height: 12px; border-radius: 3px; flex: none; }
 .st-legend b { margin-left: auto; font-variant-numeric: tabular-nums; }
 .sheet h3 { font-size: 15px; margin: 20px 0 4px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.chips button {
+  border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 18px;
+  padding: 7px 12px; font-weight: 600; font-size: 13.5px;
+}
+.chips button[aria-checked="true"] { border-color: var(--green); background: #eef6f1; }
 .st-list { list-style: none; margin: 0; padding: 0; }
 .st-item { padding: 10px 0; border-bottom: 1px solid var(--line); }
 .st-info b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

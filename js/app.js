@@ -1,7 +1,7 @@
 import { getAllTracks, getTrack, saveTrack, deleteTrack, getAllPoints, savePoint, deletePoint } from './db.js';
 import { parseTrackFile } from './gpx.js';
 import { analyse, locateOnTrack, bearing, haversine, fmtDist, fmtEle, fmtInt, fmtBytes } from './geo.js';
-import { LAYERS, DEFAULT_LAYER, COVERAGE, TERRAIN_LAYER, layerById, makeTileLayer } from './layers.js';
+import { KINDS, DL_KINDS, REGIONS, DEFAULT_LAYER, TERRAIN_LAYER, layerById, defFor, regionAt, regionById, makeTileLayer } from './layers.js';
 import { elevationAt, elevationsFor } from './elevation.js';
 import { planForTrack, planForBounds, estimate, download, storageInfo, requestPersistence, clearTiles,
   urlsForTrack, urlsForArea, cachedTileSizes, deleteTiles } from './offline.js';
@@ -16,7 +16,10 @@ const OFF_TRACK_M = 40;     // a partir d'aquí avisem que estàs fora del track
 const FAR_M = 1500;         // massa lluny: no té sentit calcular el progrés
 
 const state = {
-  layerId: store.get('layer', DEFAULT_LAYER),
+  layerId: store.get('layer', DEFAULT_LAYER),   // tipus de mapa: topo, orto o simple
+  source: store.get('mapSource', 'auto'),      // de quin territori: auto (segons on mires), cat, es, fr, world
+  region: null,                                // territori del mapa que es veu ara
+  baseDef: null,
   labels: store.get('labels', false),   // noms visibles al mapa de satèlit
   baseLayer: null,
   track: null,            // { rec, info }
@@ -40,8 +43,7 @@ const map = L.map('map', {
   center: startView?.c || [41.7, 1.75],
   zoom: startView?.z || 8,
   maxZoom: 19,
-  minZoom: 7,
-  maxBounds: L.latLngBounds(COVERAGE).pad(0.6),
+  minZoom: 5,
   worldCopyJump: false,
   // Rotació (complement leaflet-rotate): només la controlem amb el botó de la brúixola
   rotate: true,
@@ -56,19 +58,36 @@ map.attributionControl.setPrefix(false);
 map.on('moveend', () => {
   const c = map.getCenter();
   store.set('view', { c: [+c.lat.toFixed(5), +c.lng.toFixed(5)], z: map.getZoom() });
+  // En mode automàtic, si passes a un altre territori, es canvia al millor mapa d'allà
+  if (state.baseLayer && state.source === 'auto' && currentRegion() !== state.region) {
+    setBaseLayer(state.layerId);
+    toast(`Mapes ${regionById(state.region).of}`, 2000);
+  }
 });
 map.on('dragstart', () => setFollow(false));
 
-function setBaseLayer(id) {
-  const def = layerById(id);
-  // Al satèlit, el botó «Noms» tria entre l'ortofoto normal i la que porta noms
-  const shown = def.id === 'orto' && state.labels ? layerById('orto-noms') : def;
-  if (state.baseLayer) map.removeLayer(state.baseLayer);
-  state.baseLayer = makeTileLayer(shown).addTo(map);
-  state.layerId = def.id;
-  store.set('layer', def.id);
+function currentRegion() {
+  if (state.source !== 'auto') return state.source;
+  const c = map.getCenter();
+  return regionAt(c.lat, c.lng);
+}
+
+function setBaseLayer(kind) {
+  if (!KINDS.some(k => k.id === kind)) kind = DEFAULT_LAYER;
+  const region = currentRegion();
+  // Al satèlit de Catalunya, el botó «Aa» tria entre l'ortofoto normal i la que porta noms
+  const def = (kind === 'orto' && state.labels && region === 'cat' ? layerById('orto-noms') : defFor(kind, region))
+    || defFor('topo', region);
+  state.layerId = kind;
+  state.region = region;
+  store.set('layer', kind);
+  if (state.baseDef !== def) {
+    if (state.baseLayer) map.removeLayer(state.baseLayer);
+    state.baseLayer = makeTileLayer(def).addTo(map);
+    state.baseDef = def;
+  }
   const btn = $('#btn-labels');
-  btn.hidden = def.id !== 'orto';
+  btn.hidden = !(kind === 'orto' && region === 'cat');
   btn.setAttribute('aria-pressed', String(state.labels));
   renderLayerList();
 }
@@ -83,18 +102,42 @@ $('#btn-labels').onclick = () => {
 function renderLayerList() {
   const list = $('#layer-list');
   list.innerHTML = '';
-  for (const def of LAYERS.filter(l => l.inPicker !== false)) {
+  const region = state.region || currentRegion();
+  for (const kind of KINDS) {
+    const def = defFor(kind.id, region);
     const b = document.createElement('button');
     b.className = 'choice';
     b.setAttribute('role', 'radio');
-    b.setAttribute('aria-checked', String(def.id === state.layerId));
+    b.setAttribute('aria-checked', String(kind.id === state.layerId));
     b.innerHTML = `<img alt="" loading="lazy" crossorigin="anonymous"><div><b></b><small></small></div>`;
-    b.querySelector('img').src = def.thumb;
-    b.querySelector('b').textContent = def.name;
-    b.querySelector('small').textContent = def.desc;
-    b.onclick = () => { setBaseLayer(def.id); closeSheets(); };
+    if (def?.thumb) b.querySelector('img').src = def.thumb;
+    b.querySelector('b').textContent = kind.name;
+    b.querySelector('small').textContent = region === 'world' && kind.id !== 'topo'
+      ? 'Aquí no n\'hi ha: es veu el topogràfic' : kind.desc;
+    b.onclick = () => { setBaseLayer(kind.id); closeSheets(); };
     list.append(b);
   }
+
+  // D'on són els mapes: automàtic (segons on mires) o un territori fix
+  const src = $('#source-list');
+  src.innerHTML = '';
+  for (const opt of [{ id: 'auto', label: 'Automàtic' }, ...REGIONS.map(r => ({ id: r.id, label: r.src }))]) {
+    const c = document.createElement('button');
+    c.setAttribute('role', 'radio');
+    c.setAttribute('aria-checked', String(opt.id === state.source));
+    c.textContent = opt.label;
+    c.onclick = () => {
+      state.source = opt.id;
+      store.set('mapSource', opt.id);
+      setBaseLayer(state.layerId);
+    };
+    src.append(c);
+  }
+  const r = regionById(region);
+  $('#source-note').textContent = (state.source === 'auto'
+    ? `Ara mires: ${r.name}, mapes ${r.of}. Canvien sols quan passes a un altre territori.`
+    : `Sempre mapes ${r.of}, miris on miris.`)
+    + (region === 'world' ? ' OpenTopoMap només funciona amb connexió: no es pot descarregar.' : '');
 }
 
 // ---------------------------------------------------------------- Panells
@@ -173,8 +216,7 @@ function openSavedDialog(rec, count) {
   renderDlLayers();
   const plan = currentPlan();
   const { bytes } = estimate(plan);
-  const names = plan.map(p => p.def.name.replace(/ \(.*\)/, '')).join(' + ');
-  $('#saved-estimate').textContent = plan.length ? `${names}, uns ${fmtBytes(bytes)}` : 'Tria quins mapes vols a «Canviar opcions»';
+  $('#saved-estimate').textContent = plan.length ? `${planNames(plan)}, uns ${fmtBytes(bytes)}` : 'Tria quins mapes vols a «Canviar opcions»';
   $('#saved-with-maps').disabled = !plan.length;
   openSheet('#sheet-saved');
 }
@@ -1071,7 +1113,7 @@ function renderDlLayers() {
   const box = $('#dl-layers');
   if (box.childElementCount) return;
   const chosen = store.get('dlLayers', state.labels ? ['topo', 'orto', 'orto-noms'] : ['topo', 'orto']);
-  for (const def of LAYERS.filter(l => !l.terrain)) {
+  for (const def of DL_KINDS) {
     const l = document.createElement('label');
     l.className = 'check';
     l.innerHTML = `<input type="checkbox" value="${def.id}"><span></span>`;
@@ -1092,15 +1134,47 @@ $('#dl-maxzoom').onchange = refreshDownload;
 
 const MAX_AREA_TILES = 15000;
 
+// Territoris per on passa el track (o que toca la zona): se'n descarreguen els mapes de cadascun
+function dlRegions() {
+  if (state.source !== 'auto') return new Set([state.source]);
+  const set = new Set();
+  if (state.dlMode === 'track' && state.track) {
+    const pts = state.track.rec.points;
+    const step = Math.max(1, Math.floor(pts.length / 400));
+    for (let i = 0; i < pts.length; i += step) set.add(regionAt(pts[i][0], pts[i][1]));
+    const last = pts[pts.length - 1];
+    set.add(regionAt(last[0], last[1]));
+  } else {
+    const b = map.getBounds(), c = b.getCenter();
+    for (const p of [b.getNorthWest(), b.getNorthEast(), b.getSouthWest(), b.getSouthEast(), c]) set.add(regionAt(p.lat, p.lng));
+  }
+  return set;
+}
+
+function dlDefs() {
+  const kinds = [...document.querySelectorAll('#dl-layers input:checked')].map(i => i.value);
+  const defs = new Set();
+  for (const k of kinds) for (const r of dlRegions()) {
+    const d = defFor(k, r);
+    if (d && !d.noDownload) defs.add(d);
+  }
+  if (defs.size) defs.add(TERRAIN_LAYER);   // el relleu sempre, per saber l'altitud sense cobertura
+  return [...defs];
+}
+
+// En mode automàtic, cada mapa es descarrega només al seu territori (amb marge a la frontera)
+const dlRegionOf = () => (state.source === 'auto' ? regionAt : null);
+
+const planNames = plan => [...new Set(plan.map(p => p.def.name.replace(/ \(.*\)/, '')))].join(' + ');
+
 function currentPlan() {
-  const defs = [...document.querySelectorAll('#dl-layers input:checked')].map(i => layerById(i.value));
-  if (defs.length) defs.push(TERRAIN_LAYER);   // el relleu sempre, per saber l'altitud sense cobertura
+  const defs = dlDefs();
   const maxZoom = Number($('#dl-maxzoom').value);
   if (state.dlMode === 'track' && state.track) {
-    return planForTrack(defs, state.track.rec.points, Number($('#dl-buffer').value), maxZoom);
+    return planForTrack(defs, state.track.rec.points, Number($('#dl-buffer').value), maxZoom, dlRegionOf());
   }
   const minZoom = Math.max(10, Math.min(map.getZoom(), maxZoom));
-  return planForBounds(defs, map.getBounds(), minZoom, maxZoom);
+  return planForBounds(defs, map.getBounds(), minZoom, maxZoom, dlRegionOf());
 }
 
 function refreshDownload() {
@@ -1114,9 +1188,13 @@ function refreshDownload() {
   const est = $('#dl-estimate');
   const tooBig = !isTrack && tiles > MAX_AREA_TILES;
   est.classList.toggle('warn', tooBig);
-  if (!tiles) est.textContent = 'Tria almenys un tipus de mapa.';
+  const regions = dlRegions();
+  const world = regions.has('world')
+    ? ' Fora de Catalunya, Espanya i França no es poden guardar mapes (OpenTopoMap no ho permet): allà només es guarda l\'altitud.' : '';
+  const where = [...regions].filter(r => r !== 'world').map(r => regionById(r).of).join(" i ");
+  if (!tiles) est.textContent = (world ? 'Aquí no es poden descarregar mapes.' : 'Tria almenys un tipus de mapa.');
   else if (tooBig) est.textContent = `Zona massa gran (${fmtInt(tiles)} tessel·les). Apropa't més al mapa o baixa el detall màxim.`;
-  else est.textContent = `Aproximadament ${fmtInt(tiles)} tessel·les, uns ${fmtBytes(bytes)}. Les que ja tinguis guardades no es tornen a baixar.`;
+  else est.textContent = `Mapes ${where}: aproximadament ${fmtInt(tiles)} tessel·les, uns ${fmtBytes(bytes)}. Les que ja tinguis guardades no es tornen a baixar.${world}`;
   $('#dl-start').disabled = !tiles || tooBig || !!state.dlAbort;
 }
 
@@ -1156,6 +1234,7 @@ $('#dl-start').onclick = async () => {
       layers,
       minZoom: Math.max(10, Math.min(map.getZoom(), maxZoom)),
       maxZoom,
+      byRegion: !!dlRegionOf(),
     };
   }
   const res = await download(plan, {
@@ -1175,7 +1254,7 @@ $('#dl-start').onclick = async () => {
       : 'Fet! Ja pots fer servir aquests mapes sense cobertura.';
     if (wasTrack && !res.failed) {
       const rec = state.track.rec;
-      rec.offline = { at: Date.now(), layers, maxZoom, buffer: Number($('#dl-buffer').value), bytes: res.totalBytes };
+      rec.offline = { at: Date.now(), layers, maxZoom, buffer: Number($('#dl-buffer').value), bytes: res.totalBytes, byRegion: !!dlRegionOf() };
       await saveTrack(rec);
     }
     if (area) {
@@ -1208,15 +1287,15 @@ async function openStorage() {
   // Quines tessel·les són de cada element (un mateix tros de mapa pot ser de més d'un)
   const owned = new Set();
   const sumOf = urls => { let b = 0, n = 0; for (const u of urls) if (sizes.has(u)) { b += sizes.get(u); n++; owned.add(u); } return { b, n }; };
-  const trackRows = tracks.sort((a, b) => b.added - a.added).map(t => ({ t, maps: t.offline ? sumOf(urlsForTrack(t, layerById)) : null, own: trackBytes(t) }));
-  const areaRows = areas.map(a => ({ a, maps: sumOf(urlsForArea(a, layerById)) }));
+  const trackRows = tracks.sort((a, b) => b.added - a.added).map(t => ({ t, maps: t.offline ? sumOf(urlsForTrack(t, layerById, regionAt)) : null, own: trackBytes(t) }));
+  const areaRows = areas.map(a => ({ a, maps: sumOf(urlsForArea(a, layerById, regionAt)) }));
   let totalTiles = 0;
   for (const b of sizes.values()) totalTiles += b;
   let ownedBytes = 0;
   for (const u of owned) ownedBytes += sizes.get(u);
   const looseBytes = totalTiles - ownedBytes;
   const tracksBytes = trackRows.reduce((s, r) => s + r.own, 0) + new Blob([JSON.stringify(await getAllPoints())]).size;
-  const trackMaps = (() => { const set = new Set(); trackRows.forEach(r => r.t.offline && urlsForTrack(r.t, layerById).forEach(u => sizes.has(u) && set.add(u))); let b = 0; set.forEach(u => (b += sizes.get(u))); return b; })();
+  const trackMaps = (() => { const set = new Set(); trackRows.forEach(r => r.t.offline && urlsForTrack(r.t, layerById, regionAt).forEach(u => sizes.has(u) && set.add(u))); let b = 0; set.forEach(u => (b += sizes.get(u))); return b; })();
   const areaMaps = Math.max(0, ownedBytes - trackMaps);
 
   // Resum i barra
@@ -1264,7 +1343,7 @@ async function openStorage() {
     li.className = 'st-item';
     li.innerHTML = `<div class="st-info"><b></b><small></small></div><div class="st-actions"></div>`;
     li.querySelector('b').textContent = a.name;
-    li.querySelector('small').textContent = `${a.layers.map(id => layerById(id).name.replace(/ \(.*\)/, '')).join(' + ')} · ${fmtBytes(maps.b)}`;
+    li.querySelector('small').textContent = `${planNames(a.layers.map(id => ({ def: layerById(id) })))} · ${fmtBytes(maps.b)}`;
     const acts = li.querySelector('.st-actions');
     acts.append(smallBtn('Veure al mapa', () => { closeSheets(); setFollow(false); map.fitBounds([[a.bounds[0], a.bounds[1]], [a.bounds[2], a.bounds[3]]]); }));
     acts.append(smallBtn('Esborrar', () => removeArea(a, tracks, areas), true));
@@ -1293,14 +1372,14 @@ function smallBtn(label, onClick, danger = false) {
 // Tessel·les que cal conservar perquè són d'algun track o zona (excepte els indicats)
 function keepSet(tracks, areas, skipTrack = null, skipArea = null) {
   const keep = new Set();
-  for (const t of tracks) if (t.offline && t.id !== skipTrack) urlsForTrack(t, layerById).forEach(u => keep.add(u));
-  for (const a of areas) if (a.id !== skipArea) urlsForArea(a, layerById).forEach(u => keep.add(u));
+  for (const t of tracks) if (t.offline && t.id !== skipTrack) urlsForTrack(t, layerById, regionAt).forEach(u => keep.add(u));
+  for (const a of areas) if (a.id !== skipArea) urlsForArea(a, layerById, regionAt).forEach(u => keep.add(u));
   return keep;
 }
 
 async function deleteTrackMaps(t, tracks, areas) {
   const keep = keepSet(tracks, areas, t.id);
-  await deleteTiles([...urlsForTrack(t, layerById)].filter(u => !keep.has(u)));
+  await deleteTiles([...urlsForTrack(t, layerById, regionAt)].filter(u => !keep.has(u)));
   t.offline = null;
   await saveTrack(t);
   if (state.track?.rec.id === t.id) state.track.rec.offline = null;
@@ -1328,7 +1407,7 @@ async function removeTrack(t, tracks, areas) {
 async function removeArea(a, tracks, areas) {
   if (!confirm(`S'esborrarà «${a.name}». No es pot desfer.`)) return;
   const keep = keepSet(tracks, areas, null, a.id);
-  await deleteTiles([...urlsForArea(a, layerById)].filter(u => !keep.has(u)));
+  await deleteTiles([...urlsForArea(a, layerById, regionAt)].filter(u => !keep.has(u)));
   store.set('areas', areas.filter(x => x.id !== a.id));
   toast('Zona esborrada');
   openStorage();

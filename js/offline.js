@@ -18,23 +18,39 @@ function urlZooms(def, minZoom, maxZoom) {
   return [...zs];
 }
 
-/** Llista d'URL de tessel·les al voltant d'un track. */
-export function planForTrack(defs, points, buffer, maxZoom) {
+// Amb mapes de diversos territoris (p. ex. un track que passa a França), cada mapa només es
+// descarrega a la seva banda de la frontera, amb uns 3 km de marge per no quedar-se sense mapa a la ratlla.
+const MARGIN_DEG = 0.03;
+function inRegion(def, key, regionOf) {
+  if (!regionOf || !def.region) return true;
+  const [z, x, y] = key.split('/').map(Number);
+  const n = 2 ** z;
+  const lon = ((x + 0.5) / n) * 360 - 180;
+  const lat = (Math.atan(Math.sinh(Math.PI * (1 - (2 * (y + 0.5)) / n))) * 180) / Math.PI;
+  for (const [dy, dx] of [[0, 0], [MARGIN_DEG, 0], [-MARGIN_DEG, 0], [0, MARGIN_DEG * 1.35], [0, -MARGIN_DEG * 1.35]]) {
+    if (regionOf(lat + dy, lon + dx) === def.region) return true;
+  }
+  return false;
+}
+const toUrls = (def, set, regionOf) => [...set].filter(k => inRegion(def, k, regionOf)).map(k => urlFor(def, k));
+
+/** Llista d'URL de tessel·les al voltant d'un track. regionOf (opcional): filtra cada mapa al seu territori. */
+export function planForTrack(defs, points, buffer, maxZoom, regionOf = null) {
   return defs.map(def => {
     const set = new Set();
     for (const z of urlZooms(def, MIN_ZOOM, maxZoom)) tilesAroundTrack(set, points, z, buffer);
-    return { def, urls: [...set].map(k => urlFor(def, k)) };
+    return { def, urls: toUrls(def, set, regionOf) };
   });
 }
 
 /** Llista d'URL de tessel·les per a un rectangle del mapa. */
-export function planForBounds(defs, bounds, minZoom, maxZoom) {
+export function planForBounds(defs, bounds, minZoom, maxZoom, regionOf = null) {
   return defs.map(def => {
     const set = new Set();
     for (const z of urlZooms(def, minZoom, maxZoom)) {
       addTileRange(set, z, bounds.getSouth(), bounds.getWest(), bounds.getNorth(), bounds.getEast());
     }
-    return { def, urls: [...set].map(k => urlFor(def, k)) };
+    return { def, urls: toUrls(def, set, regionOf) };
   });
 }
 
@@ -115,19 +131,19 @@ export const clearTiles = () => caches.delete(TILE_CACHE);
 // --- Gestió de l'espai ---------------------------------------------------------
 
 /** URL de les tessel·les que pertanyen a un track amb mapes guardats. */
-export function urlsForTrack(rec, layerById) {
+export function urlsForTrack(rec, layerById, regionOf = null) {
   const o = rec.offline;
   if (!o) return new Set();
   const defs = (o.layers || []).map(layerById);
-  const plan = planForTrack(defs, rec.points, o.buffer || 500, o.maxZoom || 17);
+  const plan = planForTrack(defs, rec.points, o.buffer || 500, o.maxZoom || 17, o.byRegion ? regionOf : null);
   return new Set(plan.flatMap(p => p.urls));
 }
 
 /** URL de les tessel·les d'una zona descarregada. */
-export function urlsForArea(area, layerById) {
+export function urlsForArea(area, layerById, regionOf = null) {
   const [s, w, n, e] = area.bounds;
   const bounds = L.latLngBounds([s, w], [n, e]);
-  const plan = planForBounds(area.layers.map(layerById), bounds, area.minZoom, area.maxZoom);
+  const plan = planForBounds(area.layers.map(layerById), bounds, area.minZoom, area.maxZoom, area.byRegion ? regionOf : null);
   return new Set(plan.flatMap(p => p.urls));
 }
 
