@@ -357,3 +357,6 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 16px 0 4px; }
 .mb-actions .btn { flex: 1; }
 .measure-vertex { background: #fff; border: 2.5px solid #d93025; border-radius: 50%; box-sizing: border-box; }
 .measure-vertex.start { background: #d93025; border-color: #fff; }
+.mb-actions .btn.mb-close { flex: 0 0 38px; padding: 0; justify-content: center; }
+.mb-actions #mb-save { flex: 1.6; }
+.badge.badge-design { background: #fdecea; color: #b3261e; }

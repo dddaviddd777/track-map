@@ -262,6 +262,7 @@ async function renderTrackList() {
     const meta = [fmtDist(s.distance), s.gain != null ? `↑ ${fmtEle(s.gain)}` : null].filter(Boolean).join(' · ');
     li.innerHTML = `
       <button class="track-main"><b></b><small></small></button>
+      <button class="icon-btn gpx" aria-label="Exportar GPX" title="Exportar GPX (compartir o guardar el fitxer)">${ICONS.share}</button>
       <button class="icon-btn dl" aria-label="Mapes sense cobertura"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 20h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       <button class="icon-btn del" aria-label="Esborrar el track"><svg viewBox="0 0 24 24"><path d="M5 7h14M10 7V4.5h4V7m-7.5 0 1 13h9l1-13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`;
     li.querySelector('b').textContent = t.name;
@@ -277,6 +278,13 @@ async function renderTrackList() {
       badge.title = 'Cal cobertura per veure el mapa. Toca la fletxa per descarregar-los.';
     }
     li.querySelector('small').append(' ', badge);
+    if (t.designed) {
+      const d = document.createElement('span');
+      d.className = 'badge badge-design';
+      d.textContent = 'Dissenyat';
+      li.querySelector('small').append(' ', d);
+    }
+    li.querySelector('.gpx').onclick = () => exportTrackGpx(t);
     li.querySelector('.track-main').onclick = async () => { closeSheets(); await activateTrack(t.id); };
     li.querySelector('.dl').onclick = async () => { await activateTrack(t.id, false); openDownload('track'); };
     li.querySelector('.del').onclick = async () => {
@@ -833,10 +841,16 @@ $('#points-export').onclick = async () => {
     return `  <wpt lat="${p.lat}" lon="${p.lon}">${p.ele != null ? `<ele>${p.ele}</ele>` : ''}<time>${new Date(p.created).toISOString()}</time><name>${esc(name)}</name>${p.note ? `<desc>${esc(p.note)}</desc>` : ''}</wpt>`;
   }).join('\n');
   const gpx = `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Track Map" xmlns="http://www.topografix.com/GPX/1/1">\n  <metadata><name>Punts guardats a Track Map</name></metadata>\n${wpts}\n</gpx>\n`;
-  const fileName = `punts-trackmap-${new Date().toISOString().slice(0, 10)}.gpx`;
-  const file = new File([gpx], fileName, { type: 'application/gpx+xml' });
+  shareOrDownload(gpx, `punts-trackmap-${new Date().toISOString().slice(0, 10)}.gpx`, 'Punts guardats', 'Fitxer de punts descarregat');
+};
+
+const xmlEsc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[c]));
+
+// Al mòbil obre el menú «Compartir» (WhatsApp, Drive, Descàrregues…); a l'ordinador el descarrega
+async function shareOrDownload(text, fileName, title, doneMsg) {
+  const file = new File([text], fileName, { type: 'application/gpx+xml' });
   if (navigator.canShare?.({ files: [file] })) {
-    try { await navigator.share({ files: [file], title: 'Punts guardats' }); return; }
+    try { await navigator.share({ files: [file], title }); return; }
     catch (e) { if (e.name === 'AbortError') return; }
   }
   const a = document.createElement('a');
@@ -845,8 +859,19 @@ $('#points-export').onclick = async () => {
   document.body.append(a);
   a.click();
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
-  toast('Fitxer de punts descarregat');
-};
+  toast(doneMsg);
+}
+
+// Un track com a fitxer GPX (s'obre a Wikiloc, Google Earth, altres apps…)
+function exportTrackGpx(t) {
+  const pts = t.points.map(p => `      <trkpt lat="${p[0]}" lon="${p[1]}">${p[2] != null ? `<ele>${Math.round(p[2] * 10) / 10}</ele>` : ''}</trkpt>`).join('\n');
+  const wpts = (t.waypoints || []).map(w => `  <wpt lat="${w.lat}" lon="${w.lon}"><name>${xmlEsc(w.name)}</name></wpt>\n`).join('');
+  const gpx = `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Track Map" xmlns="http://www.topografix.com/GPX/1/1">\n`
+    + `  <metadata><name>${xmlEsc(t.name)}</name><time>${new Date(t.added).toISOString()}</time></metadata>\n${wpts}`
+    + `  <trk><name>${xmlEsc(t.name)}</name><trkseg>\n${pts}\n  </trkseg></trk>\n</gpx>\n`;
+  const fileName = `${t.name.replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim().slice(0, 60) || 'track'}.gpx`;
+  shareOrDownload(gpx, fileName, t.name, 'Fitxer GPX descarregat');
+}
 
 // Pestanyes del panell «Els meus tracks»: Tracks | Punts
 function showListTab(tab) {
@@ -914,6 +939,61 @@ function drawMeasure() {
   $('#mb-dist').title = 'Distància en línia recta';
   if (measure.pts.length > 1) $('#mb-dist').textContent += ` (tram ${fmtDist(leg)})`;
   $('#mb-undo').disabled = measure.pts.length < 2;
+  $('#mb-save').disabled = designPoints().length < 2;
+}
+
+// Punts de la ruta dissenyada: els fixats i, si l'has mogut, on és la creu
+function designPoints() {
+  if (!measure) return [];
+  const pts = [...measure.pts];
+  const c = map.getCenter(), last = pts[pts.length - 1];
+  if (haversine(last.lat, last.lng, c.lat, c.lng) > 2) pts.push(c);
+  return pts;
+}
+
+// Línies rectes amb un punt cada ~20 m, perquè el seguiment, l'avís de fora del track i el perfil funcionin bé
+function densify(pts, stepM = 20) {
+  const out = [[+pts[0].lat.toFixed(6), +pts[0].lng.toFixed(6), null]];
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i];
+    const n = Math.max(1, Math.ceil(haversine(a.lat, a.lng, b.lat, b.lng) / stepM));
+    for (let k = 1; k <= n; k++) {
+      const t = k / n;
+      out.push([+(a.lat + (b.lat - a.lat) * t).toFixed(6), +(a.lng + (b.lng - a.lng) * t).toFixed(6), null]);
+    }
+  }
+  return out;
+}
+
+async function saveDesignedTrack() {
+  const pts = designPoints();
+  if (pts.length < 2) return;
+  const when = new Date();
+  const proposed = `Track ${when.toLocaleDateString('ca', { day: 'numeric', month: 'short', year: 'numeric' })} ${when.toLocaleTimeString('ca', { hour: '2-digit', minute: '2-digit' })}`;
+  const answer = prompt('Nom del track (el pots deixar així):', proposed);
+  if (answer === null) return;   // cancel·lat: continues dissenyant
+  const points = densify(pts);
+  // Altitud del relleu (si no hi ha connexió ni relleu guardat, es calcularà quan es pugui)
+  try {
+    const eles = await elevationsFor(points);
+    if (eles.filter(v => v != null).length >= points.length * 0.9) eles.forEach((e, i) => { points[i][2] = e; });
+  } catch { /* es completarà en activar el track */ }
+  const info = analyse(points);
+  const rec = {
+    id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()),
+    name: answer.trim() || proposed,
+    points,
+    waypoints: [],
+    stats: { distance: info.distance, gain: info.gain, loss: info.loss, minEle: info.minEle, maxEle: info.maxEle },
+    added: Date.now(),
+    offline: null,
+    designed: true,
+    eleFromTerrain: info.hasEle || undefined,
+  };
+  await saveTrack(rec);
+  stopMeasure();
+  await activateTrack(rec.id);
+  openSavedDialog(rec, 1);
 }
 
 // Desnivell entre l'inici i la creu, quan el mapa s'atura
@@ -967,7 +1047,11 @@ $('#mb-undo').onclick = () => {
   measure.pts.forEach((p, i) => addMeasureVertex(p, i === 0));
   drawMeasure();
 };
-$('#mb-done').onclick = stopMeasure;
+$('#mb-done').onclick = () => {
+  if (measure && measure.pts.length > 2 && !confirm('Vols tancar sense guardar la ruta?')) return;
+  stopMeasure();
+};
+$('#mb-save').onclick = saveDesignedTrack;
 
 // ---------------------------------------------------------------- Indicador de l'estat del GPS
 

@@ -1,6 +1,6 @@
 // Service worker: fa que l'app i els mapes funcionin sense connexió.
 // Quan canviïs fitxers de l'app, puja el número de versió perquè els mòbils s'actualitzin.
-const APP_CACHE = 'app-v12';
+const APP_CACHE = 'app-v13';
 const TILE_CACHE = 'tiles-v1';
 const TILE_HOSTS = ['geoserveis.icgc.cat', 's3.amazonaws.com', 'www.ign.es', 'data.geopf.fr',
   'a.tile.opentopomap.org', 'b.tile.opentopomap.org', 'c.tile.opentopomap.org'];
